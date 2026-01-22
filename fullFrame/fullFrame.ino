@@ -23,7 +23,7 @@ volatile bool buttonEventToSend = false;
 float readBatteryVoltage() {
     const float R1 = 20000.0; // top resistor in voltage divider
     const float R2 = 10000.0;  // bottom resistor in voltage divider
-    const float DIVIDER_RATIO = (R1 + R2) / R2; // adjust to your resistor divider
+    const float DIVIDER_RATIO = (R1 + R2) / R2;  // actual LiPo voltage
     const float VREF = 3.3; // 1.1;
 //    analogReference(INTERNAL);
 //    delay(5);
@@ -160,7 +160,7 @@ void loop() {
     }
 
     // --- Optional: read battery voltage while Pi is on ---
-    float batteryVoltage = readBatteryVoltage();
+//    float batteryVoltage = readBatteryVoltage();
     // Can be sent over I2C when Pi requests it
 
     delay(50); // small loop delay
