@@ -18,6 +18,14 @@ bool piOn = false;
 uint32_t shutdownDeadline = 0; // millis() timestamp
 volatile bool buttonEventToSend = false;
 
+enum PiPowerState {
+    PI_OFF,
+    PI_ON,
+    PI_SHUTDOWN_PENDING
+};
+
+PiPowerState piState = PI_OFF;
+
 // ------------------------- Functions -------------------------
 float readBatteryVoltage() {
     const float R1 = 20000.0; // top resistor in voltage divider
@@ -89,12 +97,12 @@ void onI2CReceive(int numBytes) {
 void onI2CRequest() {
     switch (currentRegister) {
         case 0x01:  // button
-            Wire.write(buttonEvent ? 1 : 0);
-            buttonEvent = false;  // clear after read
+            Wire.write(buttonEventToSend ? 1 : 0);
+            buttonEventToSend = false;  // clear after read
             break;
 
         case 0x02: {  // voltage
-            uint8_t v = (uint8_t)(batteryVoltage * 25);
+            uint8_t v = (uint8_t)(readBatteryVoltage() * 25);
             Wire.write(v);
             break;
         }
@@ -105,13 +113,6 @@ void onI2CRequest() {
 }
 
 // ------------------------- LED Status -------------------------
-enum PiPowerState {
-    PI_OFF,
-    PI_ON,
-    PI_SHUTDOWN_PENDING
-};
-
-PiPowerState piState = PI_OFF;
 
 void updateLed() {
     static unsigned long lastToggle = 0;
@@ -119,18 +120,18 @@ void updateLed() {
 
     switch (piState) {
         case PI_OFF:
-            digitalWrite(LED_PIN, LOW);
+            digitalWrite(LED_BUILTIN, LOW);
             break;
 
         case PI_ON:
-            digitalWrite(LED_PIN, HIGH);
+            digitalWrite(LED_BUILTIN, HIGH);
             break;
 
         case PI_SHUTDOWN_PENDING:
             if (millis() - lastToggle >= 500) {  // 2 Hz blink
                 lastToggle = millis();
                 ledOn = !ledOn;
-                digitalWrite(LED_PIN, ledOn ? HIGH : LOW);
+                digitalWrite(LED_BUILTIN, ledOn ? HIGH : LOW);
             }
             break;
     }
