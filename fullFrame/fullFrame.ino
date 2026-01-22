@@ -13,7 +13,6 @@ RTC_DS3231 rtc;
 
 volatile bool buttonIRQ = false;
 volatile bool rtcWake = false;
-volatile bool i2cShutdownRequested = false;
 
 bool piOn = false;
 uint32_t shutdownDeadline = 0; // millis() timestamp
@@ -25,8 +24,6 @@ float readBatteryVoltage() {
     const float R2 = 10000.0;  // bottom resistor in voltage divider
     const float DIVIDER_RATIO = (R1 + R2) / R2;  // actual LiPo voltage
     const float VREF = 3.3; // 1.1;
-//    analogReference(INTERNAL);
-//    delay(5);
     uint16_t raw = analogRead(PIN_BATTERY);
     return (raw / 1023.0) * VREF * DIVIDER_RATIO;
 }
@@ -43,14 +40,12 @@ void rtcISR() {
 // ------------------------- Pi control -------------------------
 void turnPiOn() {
     digitalWrite(PIN_PI_POWER, HIGH);
-    digitalWrite(LED_BUILTIN, HIGH);
-    piOn = true;
+    piState = PI_ON;
 }
 
 void turnPiOff() {
     digitalWrite(PIN_PI_POWER, LOW);
-    digitalWrite(LED_BUILTIN, LOW);
-    piOn = false;
+    piState = PI_OFF;    
 }
 
 // ------------------------- RTC alarm -------------------------
@@ -68,29 +63,77 @@ void setRTCAlarm24h() {
 // ------------------------- I2C -------------------------
 #define I2C_ADDRESS 0x12
 #define SHUTDOWN_DELAY_SECS 30
-uint8_t i2cData[2]; // [0] = button event, [1] = battery voltage (0-255)
+volatile uint8_t currentRegister = 0x00;
 
 void onI2CReceive(int numBytes) {
     while (Wire.available()) {
         uint8_t cmd = Wire.read();
-        if (cmd == 0x01) {
-            // Button event from Pi (optional)
-        } else if (cmd == 0x02) {
-            // Pi requests shutdown
-            i2cShutdownRequested = true;
-            shutdownDeadline = millis() + SHUTDOWN_DELAY_SECS * 1000; // 30s wait
+
+        switch (cmd) {
+            case 0x01:
+            case 0x02:
+                currentRegister = cmd;
+                break;
+
+            case 0x10:  // Pi shutting down
+                piState = PI_SHUTDOWN_PENDING;
+              break;
+
+            case 0x11:  // cancel shutdown (optional)
+                piState = PI_ON;
+                break;
         }
     }
 }
 
 void onI2CRequest() {
-//    noInterrupts();
-    i2cData[0] = buttonEventToSend ? 1 : 0;
-    i2cData[1] = (uint8_t)(readBatteryVoltage() * 25); // scale ~0–11V to 0–255
-    buttonEventToSend = false; // clear flag after read
-//    interrupts();
+    switch (currentRegister) {
+        case 0x01:  // button
+            Wire.write(buttonEvent ? 1 : 0);
+            buttonEvent = false;  // clear after read
+            break;
 
-    Wire.write(i2cData, 2);
+        case 0x02: {  // voltage
+            uint8_t v = (uint8_t)(batteryVoltage * 25);
+            Wire.write(v);
+            break;
+        }
+
+        default:
+            Wire.write(0xFF);  // invalid register
+    }
+}
+
+// ------------------------- LED Status -------------------------
+enum PiPowerState {
+    PI_OFF,
+    PI_ON,
+    PI_SHUTDOWN_PENDING
+};
+
+PiPowerState piState = PI_OFF;
+
+void updateLed() {
+    static unsigned long lastToggle = 0;
+    static bool ledOn = false;
+
+    switch (piState) {
+        case PI_OFF:
+            digitalWrite(LED_PIN, LOW);
+            break;
+
+        case PI_ON:
+            digitalWrite(LED_PIN, HIGH);
+            break;
+
+        case PI_SHUTDOWN_PENDING:
+            if (millis() - lastToggle >= 500) {  // 2 Hz blink
+                lastToggle = millis();
+                ledOn = !ledOn;
+                digitalWrite(LED_PIN, ledOn ? HIGH : LOW);
+            }
+            break;
+    }
 }
 
 // ------------------------- Setup -------------------------
@@ -148,9 +191,8 @@ void loop() {
     }
 
     // --- Handle Pi shutdown request ---
-    if (piOn && i2cShutdownRequested && millis() >= shutdownDeadline) {
+    if (piState == PI_SHUTDOWN_PENDING && millis() >= shutdownDeadline) {
         turnPiOff();                 // cut power after 30s
-        i2cShutdownRequested = false;
 
         setRTCAlarm24h();            // schedule next wake
         rtcWake = false;             // clear wake flag
