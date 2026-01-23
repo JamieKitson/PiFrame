@@ -14,7 +14,6 @@ RTC_DS3231 rtc;
 volatile bool buttonIRQ = false;
 volatile bool rtcWake = false;
 
-bool piOn = false;
 uint32_t shutdownDeadline = 0; // millis() timestamp
 volatile bool buttonEventToSend = false;
 
@@ -24,7 +23,7 @@ enum PiPowerState {
     PI_SHUTDOWN_PENDING
 };
 
-PiPowerState piState = PI_OFF;
+volatile PiPowerState piState = PI_OFF;
 
 // ------------------------- Functions -------------------------
 float readBatteryVoltage() {
@@ -76,7 +75,6 @@ volatile uint8_t currentRegister = 0x00;
 void onI2CReceive(int numBytes) {
     while (Wire.available()) {
         uint8_t cmd = Wire.read();
-
         switch (cmd) {
             case 0x01:
             case 0x02:
@@ -85,6 +83,7 @@ void onI2CReceive(int numBytes) {
 
             case 0x10:  // Pi shutting down
                 piState = PI_SHUTDOWN_PENDING;
+                shutdownDeadline = millis() + SHUTDOWN_DELAY_SECS * 1000;
               break;
 
             case 0x11:  // cancel shutdown (optional)
@@ -176,18 +175,20 @@ void setup() {
     Wire.onRequest(onI2CRequest);
 
     turnPiOn(); // power Pi on startup
+
+    buttonIRQ = false;
 }
 
 // ------------------------- Main loop -------------------------
 void loop() {
 
+    updateLed();
+    
     // --- Handle button press ---
     if (buttonIRQ) {
-        noInterrupts();
         buttonIRQ = false;
-        interrupts();
 
-        if (!piOn) turnPiOn();        // turn Pi on if off
+        if (piState != PI_ON) turnPiOn();        // turn Pi on if off
         buttonEventToSend = true;     // notify Pi of button press
     }
 
