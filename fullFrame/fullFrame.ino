@@ -74,13 +74,8 @@ volatile uint8_t currentRegister = 0x00;
 
 void onI2CReceive(int numBytes) {
     while (Wire.available()) {
-        uint8_t cmd = Wire.read();
-        switch (cmd) {
-            case 0x01:
-            case 0x02:
-                currentRegister = cmd;
-                break;
-
+        currentRegister = Wire.read();
+        switch (currentRegister) {
             case 0x10:  // Pi shutting down
                 piState = PI_SHUTDOWN_PENDING;
                 shutdownDeadline = millis() + SHUTDOWN_DELAY_SECS * 1000;
@@ -104,6 +99,11 @@ void onI2CRequest() {
             uint8_t v = (uint8_t)(readBatteryVoltage() * 25);
             Wire.write(v);
             break;
+        }
+
+        case 0x10:
+        case 0x11: {
+            Wire.write(piState);
         }
 
         default:
@@ -195,6 +195,8 @@ void loop() {
     // --- Handle Pi shutdown request ---
     if (piState == PI_SHUTDOWN_PENDING && millis() >= shutdownDeadline) {
         turnPiOff();                 // cut power after 30s
+
+        updateLed();                 // make sure LED is off
 
         setRTCAlarm24h();            // schedule next wake
         rtcWake = false;             // clear wake flag
