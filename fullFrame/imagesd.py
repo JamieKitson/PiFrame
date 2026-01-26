@@ -15,7 +15,7 @@ from enum import IntEnum
 
 url = "http://192.168.1.4/py/pics3.cgi"
 BUTTON_PIN = 5
-WAIT_SECONDS = 30
+WAIT_SECONDS = 60
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01

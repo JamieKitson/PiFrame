@@ -69,7 +69,7 @@ void setRTCAlarm24h() {
 
 // ------------------------- I2C -------------------------
 #define I2C_ADDRESS 0x12
-#define SHUTDOWN_DELAY_SECS 30
+#define SHUTDOWN_DELAY_SECS 10
 volatile uint8_t currentRegister = 0x00;
 
 void onI2CReceive(int numBytes) {
@@ -170,6 +170,7 @@ void setup() {
     // again, this isn't done at reboot, so a previously set alarm could easily go overlooked
     rtc.disableAlarm(2);
 
+    delay(200);
     Wire.begin(I2C_ADDRESS);
     Wire.onReceive(onI2CReceive);
     Wire.onRequest(onI2CRequest);
