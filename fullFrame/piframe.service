@@ -1,0 +1,16 @@
+[Unit]
+Description=Run piframe script when WiFi is up
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/bin/bash -c "source /home/jamie/.virtualenvs/pimoroni/bin/activate && exec /home/jamie/inky/examples/spectra6/imagesd.py"
+StandardOutput=journal
+StandardError=journal
+Restart=no
+User=jamie
+Environment=HOME=/home/jamie
+WorkingDirectory=/home/jamie
+
+[Install]
+WantedBy=multi-user.target
