@@ -77,7 +77,13 @@ while time.time() - start < WAIT_SECONDS:
         exit(0)
         break
 
-    if arduino_button_pressed():
+    arduino_button_was_pressed = False
+
+    while arduino_button_pressed():
+        arduino_button_was_pressed = True
+        time.sleep(0.1)  # Debounce
+
+    if arduino_button_was_pressed:
         print("Arduino button pressed: restarting script")
         os.execv(__file__, ["python3", __file__]) # os.execv replaces the current process
         break
