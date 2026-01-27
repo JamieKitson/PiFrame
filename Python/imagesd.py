@@ -15,7 +15,7 @@ from enum import IntEnum
 
 url = "http://192.168.1.4/py/pics3.cgi"
 BUTTON_PIN = 5
-WAIT_SECONDS = 60
+WAIT_SECONDS = 45
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -64,6 +64,10 @@ except TypeError:
     inky.set_image(resizedimage)
 
 inky.show()
+# inky.show() returns before it has finished.
+# clear any existing button presses to avoid wierd infinite looking photo updates
+while arduino_button_pressed():
+    time.sleep(0.1)
 
 print(f"Waiting {WAIT_SECONDS} seconds for input...")
 
