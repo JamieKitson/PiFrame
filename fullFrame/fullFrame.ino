@@ -60,7 +60,7 @@ void turnPiOff() {
 
 void setRTCAlarm24h() {
     DateTime now = rtc.now();
-    DateTime wake = now + TimeSpan(0, SLEEP_MINUTES, 0, 0); // 24 hours later
+    DateTime wake = now + TimeSpan(0, 0, SLEEP_MINUTES, 0); // 24 hours later
     rtc.clearAlarm(1);
     rtc.setAlarm1(wake, DS3231_A1_Date); // match date/time
 //    rtc.armAlarm(1, true);
@@ -101,8 +101,8 @@ void onI2CRequest() {
             break;
         }
 
-        case 0x10:
-        case 0x11: {
+        case 0x10: 
+        case 0x11: { // Pi power state
             Wire.write(piState);
         }
 
@@ -136,8 +136,23 @@ void updateLed() {
     }
 }
 
+void blink(int times, int delayMs = 100)
+{
+  for(int i = 0; i < times; i++)
+  {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(delayMs);
+    digitalWrite(LED_BUILTIN, LOW);  
+    delay(delayMs);
+  }  
+}
+
 // ------------------------- Setup -------------------------
 void setup() {
+
+        blink(1);
+
+    delay(1000);
 
     pinMode(PIN_PI_POWER, OUTPUT);
     pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -148,10 +163,7 @@ void setup() {
 
     // initializing the rtc
     while(!rtc.begin()) {
-      digitalWrite(LED_BUILTIN, HIGH);
-      delay(100);
-      digitalWrite(LED_BUILTIN, LOW);  
-      delay(100);
+        blink(1);
     }
 
     //we don't need the 32K Pin, so disable it
@@ -170,8 +182,11 @@ void setup() {
     // again, this isn't done at reboot, so a previously set alarm could easily go overlooked
     rtc.disableAlarm(2);
 
-    delay(200);
+    delay(1000);
+
+        blink(1);
     Wire.begin(I2C_ADDRESS);
+        blink(1);
     Wire.onReceive(onI2CReceive);
     Wire.onRequest(onI2CRequest);
 
@@ -189,8 +204,12 @@ void loop() {
     if (buttonIRQ) {
         buttonIRQ = false;
 
-        if (piState != PI_ON) turnPiOn();        // turn Pi on if off
-        buttonEventToSend = true;     // notify Pi of button press
+        if (piState != PI_ON) {
+            turnPiOn();        // turn Pi on if off
+        }
+        else {
+            buttonEventToSend = true;     // notify Pi of button press
+        }
     }
 
     // --- Handle Pi shutdown request ---
