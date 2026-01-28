@@ -5,7 +5,11 @@ import requests
 import subprocess
 import time
 import os
+import adafruit_ds3231
+import time
+import board
 
+#from datetime import datetime, timedelta
 from io import BytesIO
 from PIL import Image
 from inky.auto import auto
@@ -16,6 +20,7 @@ from enum import IntEnum
 url = "http://192.168.1.4/py/pics3.cgi"
 BUTTON_PIN = 5
 WAIT_SECONDS = 45
+SLEEP_MINUTES = 1
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -41,6 +46,18 @@ def read_voltage():
 def arduino_button_pressed():
     button_state = i2c(I2CCommand.READ_BUTTON)
     return button_state == 1
+
+def setRtcAlarm(minutes):
+    i2c = board.I2C()  # uses board.SCL and board.SDA
+    rtc = adafruit_ds3231.DS3231(i2c)
+    rtc.disable_oscillator = True
+    rtc.alarm1_status = False
+    rtc.alarm1_interrupt = True
+    rtc.alarm2_status = False
+    rtc.alarm2_interrupt = False
+    now = time.mktime(rtc.datetime)
+    alarmTime = time.localtime(now + minutes * 60)
+    rtc.alarm1 = alarmTime
 
 parser = argparse.ArgumentParser()
 
@@ -95,6 +112,7 @@ while time.time() - start < WAIT_SECONDS:
     time.sleep(0.1)
 
 print("No button press, shutting down")
+setRtcAlarm(SLEEP_MINUTES)
 piState = i2c(I2CCommand.SHUTDOWN)
 print(f"I2C Shutdown command response: {piState}")
 subprocess.run(["sudo", "shutdown", "-h", "now"])

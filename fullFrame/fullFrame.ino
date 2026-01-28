@@ -1,5 +1,5 @@
 #include <Wire.h>
-#include <RTClib.h>
+//#include <RTClib.h>
 #include <LowPower.h>
 
 // ------------------------- Pin definitions -------------------------
@@ -9,7 +9,7 @@
 #define PIN_RTC_INT       2
 
 // ------------------------- Globals -------------------------
-RTC_DS3231 rtc;
+//RTC_DS3231 rtc;
 
 volatile bool buttonIRQ = false;
 volatile bool rtcWake = false;
@@ -54,7 +54,7 @@ void turnPiOff() {
     digitalWrite(PIN_PI_POWER, LOW);
     piState = PI_OFF;    
 }
-
+/*
 // ------------------------- RTC alarm -------------------------
 #define SLEEP_MINUTES     1
 
@@ -66,7 +66,7 @@ void setRTCAlarm24h() {
 //    rtc.armAlarm(1, true);
     rtc.clearAlarm(1); // clear previous flags
 }
-
+*/
 // ------------------------- I2C -------------------------
 #define I2C_ADDRESS 0x12
 #define SHUTDOWN_DELAY_SECS 10
@@ -152,7 +152,7 @@ void setup() {
 
         blink(1);
 
-    delay(1000);
+//    delay(1000);
 
     pinMode(PIN_PI_POWER, OUTPUT);
     pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -160,7 +160,7 @@ void setup() {
 
     attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), buttonISR, FALLING);
     attachInterrupt(digitalPinToInterrupt(PIN_RTC_INT), rtcISR, FALLING);
-
+/*
     // initializing the rtc
     while(!rtc.begin()) {
         blink(1);
@@ -183,7 +183,7 @@ void setup() {
     rtc.disableAlarm(2);
 
     delay(1000);
-
+*/
         blink(1);
     Wire.begin(I2C_ADDRESS);
         blink(1);
@@ -219,8 +219,8 @@ void loop() {
 
         updateLed();                 // make sure LED is off
 
-        setRTCAlarm24h();            // schedule next wake
-        rtcWake = false;             // clear wake flag
+//        setRTCAlarm24h();            // schedule next wake
+//        rtcWake = false;             // clear wake flag
 
         LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF); // sleep until RTC alarm
 
