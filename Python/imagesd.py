@@ -20,7 +20,7 @@ from enum import IntEnum
 url = "http://192.168.1.4/py/pics3.cgi"
 BUTTON_PIN = 5
 WAIT_SECONDS = 45
-SLEEP_MINUTES = 1
+SLEEP_MINUTES = 5
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -50,14 +50,15 @@ def arduino_button_pressed():
 def setRtcAlarm(minutes):
     i2c_bus = board.I2C()  # uses board.SCL and board.SDA
     rtc = adafruit_ds3231.DS3231(i2c_bus)
-    rtc.disable_oscillator = False
-    rtc.alarm1_status = False
-    rtc.alarm1_interrupt = True
-    rtc.alarm2_status = False
-    rtc.alarm2_interrupt = False
+
+    # Set alarm for 'minutes' minutes from now
     now = time.mktime(rtc.datetime)
     alarm_time = time.localtime(now + minutes * 60)
-    rtc.alarm1 = (alarm_time, "monthly")
+    rtc.alarm1 = (alarm_time, "once")
+    
+    # Enable alarm interrupt mode (after alarm is configured)
+    rtc.alarm1_interrupt = True
+    print(f"RTC alarm set for {minutes} minute(s) from now")
 
 parser = argparse.ArgumentParser()
 
