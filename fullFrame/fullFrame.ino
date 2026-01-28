@@ -60,7 +60,7 @@ void turnPiOff() {
 
 void setRTCAlarm24h() {
     DateTime now = rtc.now();
-    DateTime wake = now + TimeSpan(0, 0, SLEEP_MINUTES, 0); // 24 hours later
+    DateTime wake = now + TimeSpan(0, 0, SLEEP_MINUTES, 0);
     rtc.clearAlarm(1);
     rtc.setAlarm1(wake, DS3231_A1_Date); // match date/time
 //    rtc.armAlarm(1, true);
@@ -193,6 +193,7 @@ void setup() {
     turnPiOn(); // power Pi on startup
 
     buttonIRQ = false;
+
 }
 
 // ------------------------- Main loop -------------------------
@@ -222,7 +223,13 @@ void loop() {
         rtcWake = false;             // clear wake flag
 
         LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF); // sleep until RTC alarm
+
         return;                      // loop continues after wake
+    }
+
+    if (rtcWake) {
+        rtcWake = false;
+        turnPiOn();                 // ensure Pi is on after RTC wake
     }
 
     // --- Optional: read battery voltage while Pi is on ---
