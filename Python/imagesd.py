@@ -44,8 +44,11 @@ def read_voltage():
     return voltage / 25  # Convert to volts
 
 def arduino_button_pressed():
-    button_state = i2c(I2CCommand.READ_BUTTON)
-    return button_state == 1
+    button_pressed = False
+    while i2c(I2CCommand.READ_BUTTON) == 1:
+        button_pressed = True
+        time.sleep(0.1)  # Debounce
+    return button_pressed
 
 def setRtcAlarm(minutes):
     i2c_bus = board.I2C()  # uses board.SCL and board.SDA
@@ -84,8 +87,7 @@ except TypeError:
 inky.show()
 # inky.show() returns before it has finished.
 # clear any existing button presses to avoid wierd infinite looking photo updates
-while arduino_button_pressed():
-    time.sleep(0.1)
+arduino_button_pressed()
 
 print(f"Waiting {WAIT_SECONDS} seconds for input...")
 
@@ -99,13 +101,7 @@ while time.time() - start < WAIT_SECONDS:
         exit(0)
         break
 
-    arduino_button_was_pressed = False
-
-    while arduino_button_pressed():
-        arduino_button_was_pressed = True
-        time.sleep(0.1)  # Debounce
-
-    if arduino_button_was_pressed:
+    if arduino_button_pressed():
         print("Arduino button pressed: restarting script")
         os.execv(__file__, ["python3", __file__]) # os.execv replaces the current process
         break
