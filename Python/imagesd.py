@@ -48,16 +48,16 @@ def arduino_button_pressed():
     return button_state == 1
 
 def setRtcAlarm(minutes):
-    i2c = board.I2C()  # uses board.SCL and board.SDA
-    rtc = adafruit_ds3231.DS3231(i2c)
-    rtc.disable_oscillator = True
+    i2c_bus = board.I2C()  # uses board.SCL and board.SDA
+    rtc = adafruit_ds3231.DS3231(i2c_bus)
+    rtc.disable_oscillator = False
     rtc.alarm1_status = False
     rtc.alarm1_interrupt = True
     rtc.alarm2_status = False
     rtc.alarm2_interrupt = False
     now = time.mktime(rtc.datetime)
-    alarmTime = time.localtime(now + minutes * 60)
-    rtc.alarm1 = alarmTime
+    alarm_time = time.localtime(now + minutes * 60)
+    rtc.alarm1 = (alarm_time, "monthly")
 
 parser = argparse.ArgumentParser()
 
