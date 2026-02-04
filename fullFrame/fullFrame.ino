@@ -132,6 +132,35 @@ void blink(int times, int delayMs = 100)
   }  
 }
 
+// ------------------------- RTC 32KHz Disable -------------------------
+
+// DS3231 I2C address and registers
+#define DS3231_ADDRESS 0x68
+#define DS3231_STATUSREG 0x0F
+#define EN32KHZ_BIT 3
+
+// We cannot use the built-in RTClib functions to disable the 32KHz output as
+// we don't want to perpetually be an I2C master, so we implement it ourselves
+// However, currently this is implemented and called in the Python code
+void disable32K() {
+    // Read current status register
+    Wire.beginTransmission(DS3231_ADDRESS);
+    Wire.write(DS3231_STATUSREG);
+    Wire.endTransmission();
+
+    Wire.requestFrom(DS3231_ADDRESS, 1);
+    uint8_t status = Wire.read();
+
+    // Clear bit 3 (EN32kHz)
+    status &= ~(0x1 << EN32KHZ_BIT);  // Clear bit 3
+
+    // Write back
+    Wire.beginTransmission(DS3231_ADDRESS);
+    Wire.write(DS3231_STATUSREG);
+    Wire.write(status);
+    Wire.endTransmission();
+}
+
 // ------------------------- Setup -------------------------
 void setup() {
 
@@ -142,9 +171,7 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), buttonISR, FALLING);
     attachInterrupt(digitalPinToInterrupt(PIN_RTC_INT), rtcISR, FALLING);
 
-    blink(1);
     Wire.begin(I2C_ADDRESS);
-    blink(1);
     Wire.onReceive(onI2CReceive);
     Wire.onRequest(onI2CRequest);
 
@@ -158,7 +185,13 @@ void setup() {
 void loop() {
 
     updateLed();
-    
+
+    // --- Low power mode ---
+    if (piState == PI_OFF) {
+        // If Pi is off, enter low power mode
+        LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
+    }    
+
     // --- Handle button press ---
     if (buttonIRQ) {
         buttonIRQ = false;
@@ -174,12 +207,6 @@ void loop() {
     // --- Handle Pi shutdown request ---
     if (piState == PI_SHUTDOWN_PENDING && millis() >= shutdownDeadline) {
         turnPiOff();                 // cut power after 30s
-
-        updateLed();                 // make sure LED is off
-
-        LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF); // sleep until RTC alarm
-
-        return;                      // loop continues after wake
     }
 
     // --- Handle waking Pi ---

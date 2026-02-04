@@ -9,7 +9,6 @@ import adafruit_ds3231
 import time
 import board
 
-#from datetime import datetime, timedelta
 from io import BytesIO
 from PIL import Image
 from inky.auto import auto
@@ -54,14 +53,33 @@ def setRtcAlarm(minutes):
     i2c_bus = board.I2C()  # uses board.SCL and board.SDA
     rtc = adafruit_ds3231.DS3231(i2c_bus)
 
+    # Disable 32kHz output to save a lot of power
+    disable_32khz_output(rtc)
+
     # Set alarm for 'minutes' minutes from now
     now = time.mktime(rtc.datetime)
     alarm_time = time.localtime(now + minutes * 60)
-    rtc.alarm1 = (alarm_time, "once")
+    rtc.alarm1 = (alarm_time, "monthly")
     
     # Enable alarm interrupt mode (after alarm is configured)
     rtc.alarm1_interrupt = True
     print(f"RTC alarm set for {minutes} minute(s) from now")
+
+# rtc.disable_oscillator does not appear to work, so we implement our own
+def disable_32khz_output(rtc):
+    """Disable the 32kHz output pin on DS3231"""
+    DS3231_STATUSREG = 0x0F
+    EN32KHZ_BIT = 3
+    
+    # Read current status register
+    status = bytearray(1)
+    rtc.i2c_device.write_then_readinto(bytes([DS3231_STATUSREG]), status)
+    
+    # Clear bit 3 (EN32kHz)
+    status[0] &= ~(1 << EN32KHZ_BIT)
+    
+    # Write back
+    rtc.i2c_device.write(bytes([DS3231_STATUSREG, status[0]]))
 
 parser = argparse.ArgumentParser()
 
