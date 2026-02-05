@@ -19,7 +19,7 @@ from enum import IntEnum
 url = "http://192.168.1.4/py/pics3.cgi"
 BUTTON_PIN = 5
 WAIT_SECONDS = 45
-SLEEP_MINUTES = 5
+SLEEP_MINUTES = 1
 
 # Get the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
