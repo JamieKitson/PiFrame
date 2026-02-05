@@ -27,7 +27,7 @@ class Config:
     LOW_VOLTAGE_THRESHOLD: float = 6.75
     I2C_ADDRESS: int = 0x12
     VOLTAGE_DIVIDER: float = 25.0
-    SATURATION: float = 0.5
+    IMAGE_SATURATION: float = 0.5
 
 
 class I2CCommand(IntEnum):
@@ -205,7 +205,7 @@ class PiFrameController:
         
         # Display image
         try:
-            self.inky.set_image(resized_img, saturation=Config.SATURATION)
+            self.inky.set_image(resized_img, saturation=Config.IMAGE_SATURATION)
         except TypeError:
             self.inky.set_image(resized_img)
         
