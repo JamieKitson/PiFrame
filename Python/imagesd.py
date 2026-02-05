@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
-import argparse
 import requests
 import subprocess
-import time
 import os
 import adafruit_ds3231
 import time
@@ -21,6 +19,7 @@ BUTTON_PIN = 5
 WAIT_SECONDS = 45
 SLEEP_MINUTES = 5
 LOW_VOLTAGE_THRESHOLD = 6.75
+SATURATION = 0.5
 
 # Get the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +29,67 @@ class I2CCommand(IntEnum):
     READ_VOLTAGE = 0x02
     SHUTDOWN = 0x10
 
+def i2c(cmd):
+    try:
+        with SMBus(1) as bus:
+            bus.write_byte(0x12, cmd)
+            msg = i2c_msg.read(0x12, 1)
+            bus.i2c_rdwr(msg)
+            data = list(msg)
+            return data[0]
+    except Exception as e:
+        print(f"I2C communication error: {e}")
+        return -1
+
+def read_voltage():
+    voltage = i2c(I2CCommand.READ_VOLTAGE)
+    return voltage / 25  # Convert to volts
+
+def arduino_button_pressed():
+    button_pressed = False
+    while i2c(I2CCommand.READ_BUTTON) == 1:
+        button_pressed = True
+        time.sleep(0.1)  # Debounce
+    return button_pressed
+
+def shutdown():
+    """Send shutdown command"""
+    return i2c(I2CCommand.SHUTDOWN)
+
+# rtc.disable_oscillator does not appear to work, so we implement our own
+def disable_32khz_output(rtc):
+    """Disable the 32kHz output pin on DS3231"""
+    DS3231_STATUSREG = 0x0F
+    EN32KHZ_BIT = 3
+    
+    # Read current status register
+    status = bytearray(1)
+    rtc.i2c_device.write_then_readinto(bytes([DS3231_STATUSREG]), status)
+    
+    # Clear bit 3 (EN32kHz)
+    status[0] &= ~(1 << EN32KHZ_BIT)
+    
+    # Write back
+    rtc.i2c_device.write(bytes([DS3231_STATUSREG, status[0]]))
+
+def setRtcAlarm(minutes):
+    i2c_bus = board.I2C()  # uses board.SCL and board.SDA
+    rtc = adafruit_ds3231.DS3231(i2c_bus)
+
+    # Disable 32kHz output to save a lot of power
+    disable_32khz_output(rtc)
+
+    # reset alarm status to clear any existing alarm flags
+    rtc.alarm1_status = False
+
+    # Set alarm for 'minutes' minutes from now
+    now = time.mktime(rtc.datetime)
+    alarm_time = time.localtime(now + minutes * 60)
+    rtc.alarm1 = (alarm_time, "monthly")
+    
+    # Enable alarm interrupt mode (after alarm is configured)
+    rtc.alarm1_interrupt = True
+    print(f"RTC alarm set for {minutes} minute(s) from now")
 
 def send_low_voltage_email(voltage):
     """Send email notification for low voltage using local mail"""
@@ -90,71 +150,7 @@ def add_voltage_warning(img, voltage):
     
     return img
 
-def i2c(cmd):
-    try:
-        with SMBus(1) as bus:
-            bus.write_byte(0x12, cmd)
-            msg = i2c_msg.read(0x12, 1)
-            bus.i2c_rdwr(msg)
-            data = list(msg)
-            return data[0]
-    except Exception as e:
-        print(f"I2C communication error: {e}")
-        return -1
-
-def read_voltage():
-    voltage = i2c(I2CCommand.READ_VOLTAGE)
-    return voltage / 25  # Convert to volts
-
-def arduino_button_pressed():
-    button_pressed = False
-    while i2c(I2CCommand.READ_BUTTON) == 1:
-        button_pressed = True
-        time.sleep(0.1)  # Debounce
-    return button_pressed
-
-def setRtcAlarm(minutes):
-    i2c_bus = board.I2C()  # uses board.SCL and board.SDA
-    rtc = adafruit_ds3231.DS3231(i2c_bus)
-
-    # Disable 32kHz output to save a lot of power
-    disable_32khz_output(rtc)
-
-    # reset alarm status to clear any existing alarm flags
-    rtc.alarm1_status = False
-
-    # Set alarm for 'minutes' minutes from now
-    now = time.mktime(rtc.datetime)
-    alarm_time = time.localtime(now + minutes * 60)
-    rtc.alarm1 = (alarm_time, "monthly")
-    
-    # Enable alarm interrupt mode (after alarm is configured)
-    rtc.alarm1_interrupt = True
-    print(f"RTC alarm set for {minutes} minute(s) from now")
-
-# rtc.disable_oscillator does not appear to work, so we implement our own
-def disable_32khz_output(rtc):
-    """Disable the 32kHz output pin on DS3231"""
-    DS3231_STATUSREG = 0x0F
-    EN32KHZ_BIT = 3
-    
-    # Read current status register
-    status = bytearray(1)
-    rtc.i2c_device.write_then_readinto(bytes([DS3231_STATUSREG]), status)
-    
-    # Clear bit 3 (EN32kHz)
-    status[0] &= ~(1 << EN32KHZ_BIT)
-    
-    # Write back
-    rtc.i2c_device.write(bytes([DS3231_STATUSREG, status[0]]))
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument("--saturation", "-s", type=float, default=0.5, help="Colour palette saturation")
-
 inky = auto()
-
-args, _ = parser.parse_known_args()
 
 voltage = read_voltage()
 print(f"Battery voltage: {voltage:.2f}V")
@@ -173,7 +169,7 @@ if voltage < LOW_VOLTAGE_THRESHOLD:
     resizedimage = add_voltage_warning(resizedimage, voltage)
 
 try:
-    inky.set_image(resizedimage, saturation=args.saturation)
+    inky.set_image(resizedimage, saturation=SATURATION)
 except TypeError:
     inky.set_image(resizedimage)
 
@@ -203,7 +199,7 @@ while time.time() - start < WAIT_SECONDS:
 
 print("No button press, shutting down")
 setRtcAlarm(SLEEP_MINUTES)
-piState = i2c(I2CCommand.SHUTDOWN)
+piState = shutdown()
 print(f"I2C Shutdown command response: {piState}")
 subprocess.run(["sudo", "shutdown", "-h", "now"])
 
