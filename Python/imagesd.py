@@ -21,6 +21,9 @@ BUTTON_PIN = 5
 WAIT_SECONDS = 45
 SLEEP_MINUTES = 5
 
+# Get the directory containing this script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
     READ_VOLTAGE = 0x02
@@ -97,7 +100,7 @@ voltage = read_voltage()
 response = requests.get(url + f"?v={voltage:.2f}")
 img = Image.open(BytesIO(response.content))
 
-img.save("/home/jamie/inky/examples/spectra6/image.jpg")
+img.save(os.path.join(SCRIPT_DIR, "image.jpg"))
 resizedimage = img.resize(inky.resolution)
 
 try:
