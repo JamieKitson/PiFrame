@@ -67,18 +67,25 @@ Buttons:
     Arduino D2 → DS3231 SQW/INT (RTC alarm)
 
 I2C Bus (via PCA9515A buffer):
-    Side A (3.3V):
-        Arduino A4 (SDA) ←→ PCA9515A SDA_A
-        Arduino A5 (SCL) ←→ PCA9515A SCL_A
-        DS3231 SDA ←→ PCA9515A SDA_A
-        DS3231 SCL ←→ PCA9515A SCL_A
+    Side 0 (Pi):
+        Pi 3.3V ────────────→ PCA9515A VCC_0
+        Pi GPIO 2 (SDA) ────→ PCA9515A SDA_0
+        Pi GPIO 3 (SCL) ────→ PCA9515A SCL_0
     
-    Side B (3.3V):
-        Pi GPIO 2 (SDA) ←→ PCA9515A SDA_B
-        Pi GPIO 3 (SCL) ←→ PCA9515A SCL_B
+    Side 1 (Arduino + RTC):
+        Arduino A4 (SDA) ───→ PCA9515A SDA_1
+        Arduino A5 (SCL) ───→ PCA9515A SCL_1
+        DS3231 SDA ─────────→ PCA9515A SDA_1
+        DS3231 SCL ─────────→ PCA9515A SCL_1
+    
+    Enable Control:
+        Pi 3.3V ────────────→ PCA9515A EN (auto-disable when Pi is off)
+        (VCC_1 not connected)
 
-Pi GPIO 5 → Push Button → GND (optional)
+Pi GPIO 5 → Inky Impression Top Button → GND
 Pi GPIO (SPI) → Inky Display
+
+GND ────────────────────────→ PCA9515A GND
 ```
 
 ## System Architecture
@@ -104,6 +111,8 @@ Pi GPIO (SPI) → Inky Display
 
 **PCA9515A I2C Buffer**
 - Isolates I2C bus between Pi and Arduino/RTC
+- Automatically disabled when Pi is off (EN tied to Pi 3.3V)
+- Reduces power consumption in deep sleep
 
 **E-ink Display**
 - No power draw when static
@@ -153,19 +162,22 @@ When Arduino D7 is HIGH:
 ### 3. I2C Buffer (PCA9515A)
 
 ```
-3.3V ────→ PCA9515A VCC_0
+Pi 3.3V ──┬───→ PCA9515A VCC_0
+          └───→ PCA9515A EN (auto-disable when Pi off)
 
-Side A (Arduino + RTC):
-    Arduino A4 ─────→ PCA9515A SDA_1
-    Arduino A5 ─────→ PCA9515A SCL_1
-    DS3231 SDA ─────→ PCA9515A SDA_1
-    DS3231 SCL ─────→ PCA9515A SCL_1
+Side 0 (Pi):
+    Pi GPIO 2 (SDA) ────→ PCA9515A SDA_0
+    Pi GPIO 3 (SCL) ────→ PCA9515A SCL_0
 
-Side B (Pi):
-    Pi GPIO 2 ──────→ PCA9515A SDA_0
-    Pi GPIO 3 ──────→ PCA9515A SCL_0
+Side 1 (Arduino + RTC):
+    Arduino A4 (SDA) ───→ PCA9515A SDA_1
+    Arduino A5 (SCL) ───→ PCA9515A SCL_1
+    DS3231 SDA ─────────→ PCA9515A SDA_1
+    DS3231 SCL ─────────→ PCA9515A SCL_1
 
-GND ─────────────────→ PCA9515A GND
+GND ────────────────────→ PCA9515A GND
+
+Note: VCC_1 is left disconnected
 ```
 
 The PCA9515A provides:
@@ -173,13 +185,14 @@ The PCA9515A provides:
 - Built-in pull-ups (no external resistors needed)
 - Bus isolation
 - Rise-time acceleration
+- **Automatic disable when Pi is off** - EN pin tied to Pi 3.3V means the buffer powers down completely when the Pi shuts off, eliminating any leakage current through the I2C bus
 
 ### 4. Button Connections
 
 ```
 3.3V ──┬─ Internal Pull-up ─── Arduino D3 ─── Button ─── GND
        │
-       └─ Internal Pull-up ─── Pi GPIO 5 (top Inky Impression button) ─── Button ─── GND
+       └─ Internal Pull-up ─── Pi GPIO 5 (top Inky Impression button) ─── GND
 ```
 
 ## Software Installation
@@ -218,7 +231,7 @@ The PCA9515A provides:
 
 6. Copy Python script to Pi:
    ```bash
-   mkdir -p ~/Documents/Arduino/matrix/PiFrame/Python
+   mkdir -p ~/PiFrame/Python
    # Copy imagesd.py to this directory
    ```
 
@@ -305,7 +318,8 @@ readfile($image);
 6. System waits 45 seconds for button press
 7. If no button pressed, Pi commands Arduino to shutdown
 8. Arduino cuts Pi power, sets RTC alarm, enters deep sleep
-9. Cycle repeats after sleep period
+9. PCA9515A buffer automatically disables (EN goes low with Pi 3.3V)
+10. Cycle repeats after sleep period
 
 ### Manual Controls
 
@@ -402,11 +416,11 @@ sudo i2cdetect -y 1
 ```
 
 Check:
-- PCA9515A power (VCC_0 at 3.3V)
+- PCA9515A power (VCC_0 at 3.3V from Pi)
+- EN pin has voltage when Pi is on
 - SDA/SCL connections on both sides of buffer
 - Arduino is powered
 - I2C address matches
-- PCA9515A enable pin (if present) is pulled high
 
 ### Display Not Updating
 
@@ -430,6 +444,7 @@ Check:
 - Arduino enters deep sleep
 - Measure current draw
 - Increase `SLEEP_MINUTES`
+- Verify PCA9515A is disabling (EN should go to 0V when Pi is off)
 
 ### Email Notifications Not Working
 
@@ -444,10 +459,14 @@ mail
 ### I2C Buffer Issues
 
 If devices aren't visible on `i2cdetect`:
-- Verify PCA9515A has 3.3V on both VCC pins
+- Verify PCA9515A VCC_0 has 3.3V from Pi
+- Check EN pin is high when Pi is running
+- Verify VCC_1 is disconnected (not used)
 - Check all ground connections
-- Ensure buffer is oriented correctly
+- Ensure buffer is oriented correctly (Pi on side 0, Arduino/RTC on side 1)
 - Try connecting devices directly (temporarily) to isolate issue
+
+Note: The buffer will only work when the Pi is powered on, as EN is tied to Pi 3.3V.
 
 ## License
 
