@@ -25,11 +25,11 @@ volatile PiPowerState piState = PI_OFF;
 // ------------------------- Functions -------------------------
 float readBatteryVoltage() {
     const float R1 = 20000.0; // top resistor in voltage divider
-    const float R2 = 10000.0;  // bottom resistor in voltage divider
-    const float DIVIDER_RATIO = (R1 + R2) / R2;  // actual LiPo voltage
-    const float VREF = 3.3; // 1.1;
+    const float R2 = 10000.0; // bottom resistor in voltage divider
+    const float DIVIDER_RATIO = (R1 + R2) / R2;
+    const float VREF = 3.3; // Arduino ADC reference voltage
     uint16_t raw = analogRead(PIN_BATTERY);
-    return (raw / 1023.0) * VREF * DIVIDER_RATIO;
+    return (raw / 1023.0) * VREF * DIVIDER_RATIO; // actual LiPo voltage
 }
 
 // ------------------------- ISRs -------------------------
@@ -81,6 +81,7 @@ void onI2CRequest() {
             break;
 
         case 0x02: {  // voltage
+            // Simple scaling to fit voltage into 0-255 range, will be 6v - 8.4v
             uint8_t v = (uint8_t)(readBatteryVoltage() * 25);
             Wire.write(v);
             break;
@@ -89,6 +90,7 @@ void onI2CRequest() {
         case 0x10: 
         case 0x11: { // Pi power state
             Wire.write(piState);
+            break;
         }
 
         default:
