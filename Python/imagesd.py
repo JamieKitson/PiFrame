@@ -42,10 +42,10 @@ Threshold: {LOW_VOLTAGE_THRESHOLD}V
 
 Please charge or replace the battery soon.
 """
-        
+        MAIL_CMD = "s-nail"
         # Send to current user - mail will deliver to local mailbox
         subprocess.run(
-            ["mail", "-s", subject, os.getenv("USER", "root")],
+            [MAIL_CMD, "-s", subject, os.getenv("USER", "root")],
             input=body.encode(),
             check=True
         )
@@ -54,7 +54,7 @@ Please charge or replace the battery soon.
     except subprocess.CalledProcessError as e:
         print(f"Failed to send email: {e}")
     except FileNotFoundError:
-        print("mail command not found. Install with: sudo apt-get install mailutils")
+        print(f"{MAIL_CMD} command not found.")
 
 def add_voltage_warning(img, voltage):
     """Add low voltage warning text to image"""
@@ -168,7 +168,7 @@ resizedimage = img.resize(inky.resolution)
 # Check for low voltage and send email if needed
 if voltage < LOW_VOLTAGE_THRESHOLD:
     print(f"WARNING: Low voltage detected ({voltage:.2f}V < {LOW_VOLTAGE_THRESHOLD}V)")
-    
+
 send_low_voltage_email(voltage)
 resizedimage = add_voltage_warning(resizedimage, voltage)
 
