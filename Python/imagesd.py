@@ -169,8 +169,8 @@ resizedimage = img.resize(inky.resolution)
 if voltage < LOW_VOLTAGE_THRESHOLD:
     print(f"WARNING: Low voltage detected ({voltage:.2f}V < {LOW_VOLTAGE_THRESHOLD}V)")
 
-send_low_voltage_email(voltage)
-resizedimage = add_voltage_warning(resizedimage, voltage)
+    send_low_voltage_email(voltage)
+    resizedimage = add_voltage_warning(resizedimage, voltage)
 
 try:
     inky.set_image(resizedimage, saturation=args.saturation)
