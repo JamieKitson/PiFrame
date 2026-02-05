@@ -13,193 +13,253 @@ from inky.auto import auto
 from gpiozero import Button
 from smbus2 import SMBus, i2c_msg
 from enum import IntEnum
+from dataclasses import dataclass
+from typing import Optional
 
-url = "http://192.168.1.4/py/pics3.cgi"
-BUTTON_PIN = 5
-WAIT_SECONDS = 45
-SLEEP_MINUTES = 5
-LOW_VOLTAGE_THRESHOLD = 6.75
-SATURATION = 0.5
 
-# Get the directory containing this script
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+@dataclass
+class Config:
+    """Configuration constants"""
+    IMAGE_URL: str = "http://192.168.1.4/py/pics3.cgi"
+    BUTTON_PIN: int = 5
+    WAIT_SECONDS: int = 45
+    SLEEP_MINUTES: int = 5
+    LOW_VOLTAGE_THRESHOLD: float = 6.75
+    I2C_ADDRESS: int = 0x12
+    VOLTAGE_DIVIDER: float = 25.0
+    SATURATION: float = 0.5
+
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
     READ_VOLTAGE = 0x02
     SHUTDOWN = 0x10
 
-def i2c(cmd):
-    try:
-        with SMBus(1) as bus:
-            bus.write_byte(0x12, cmd)
-            msg = i2c_msg.read(0x12, 1)
-            bus.i2c_rdwr(msg)
-            data = list(msg)
-            return data[0]
-    except Exception as e:
-        print(f"I2C communication error: {e}")
-        return -1
 
-def read_voltage():
-    voltage = i2c(I2CCommand.READ_VOLTAGE)
-    return voltage / 25  # Convert to volts
-
-def arduino_button_pressed():
-    button_pressed = False
-    while i2c(I2CCommand.READ_BUTTON) == 1:
-        button_pressed = True
-        time.sleep(0.1)  # Debounce
-    return button_pressed
-
-def shutdown():
-    """Send shutdown command"""
-    return i2c(I2CCommand.SHUTDOWN)
-
-# rtc.disable_oscillator does not appear to work, so we implement our own
-def disable_32khz_output(rtc):
-    """Disable the 32kHz output pin on DS3231"""
-    DS3231_STATUSREG = 0x0F
-    EN32KHZ_BIT = 3
+class I2CController:
+    """Handles I2C communication with Arduino"""
     
-    # Read current status register
-    status = bytearray(1)
-    rtc.i2c_device.write_then_readinto(bytes([DS3231_STATUSREG]), status)
+    def __init__(self, address: int = Config.I2C_ADDRESS):
+        self.address = address
     
-    # Clear bit 3 (EN32kHz)
-    status[0] &= ~(1 << EN32KHZ_BIT)
+    def _send_command(self, cmd: I2CCommand) -> int:
+        """Send I2C command and return response"""
+        try:
+            with SMBus(1) as bus:
+                bus.write_byte(self.address, cmd)
+                msg = i2c_msg.read(self.address, 1)
+                bus.i2c_rdwr(msg)
+                return list(msg)[0]
+        except Exception as e:
+            print(f"I2C communication error: {e}")
+            return -1
     
-    # Write back
-    rtc.i2c_device.write(bytes([DS3231_STATUSREG, status[0]]))
-
-def setRtcAlarm(minutes):
-    i2c_bus = board.I2C()  # uses board.SCL and board.SDA
-    rtc = adafruit_ds3231.DS3231(i2c_bus)
-
-    # Disable 32kHz output to save a lot of power
-    disable_32khz_output(rtc)
-
-    # reset alarm status to clear any existing alarm flags
-    rtc.alarm1_status = False
-
-    # Set alarm for 'minutes' minutes from now
-    now = time.mktime(rtc.datetime)
-    alarm_time = time.localtime(now + minutes * 60)
-    rtc.alarm1 = (alarm_time, "monthly")
+    def read_voltage(self) -> float:
+        """Read battery voltage"""
+        raw_voltage = self._send_command(I2CCommand.READ_VOLTAGE)
+        return raw_voltage / Config.VOLTAGE_DIVIDER
     
-    # Enable alarm interrupt mode (after alarm is configured)
-    rtc.alarm1_interrupt = True
-    print(f"RTC alarm set for {minutes} minute(s) from now")
+    def arduino_button_pressed(self) -> bool:
+        """Check if Arduino button is pressed with debouncing"""
+        button_pressed = False
+        while self._send_command(I2CCommand.READ_BUTTON) == 1:
+            button_pressed = True
+            time.sleep(0.1)
+        return button_pressed
+    
+    def shutdown(self) -> int:
+        """Send shutdown command"""
+        return self._send_command(I2CCommand.SHUTDOWN)
 
-def send_low_voltage_email(voltage):
-    """Send email notification for low voltage using local mail"""
-    try:
-        subject = f"PiFrame Low Voltage Alert: {voltage:.2f}V"
-        body = f"""Warning: PiFrame battery voltage is low!
+
+class RTCController:
+    """Handles RTC alarm configuration"""
+    
+    def __init__(self):
+        self.i2c_bus = board.I2C()
+        self.rtc = adafruit_ds3231.DS3231(self.i2c_bus)
+        self._disable_32khz_output()
+    
+    def _disable_32khz_output(self):
+        """Disable the 32kHz output pin to save power"""
+        DS3231_STATUSREG = 0x0F
+        EN32KHZ_BIT = 3
+        
+        status = bytearray(1)
+        self.rtc.i2c_device.write_then_readinto(bytes([DS3231_STATUSREG]), status)
+        status[0] &= ~(1 << EN32KHZ_BIT)
+        self.rtc.i2c_device.write(bytes([DS3231_STATUSREG, status[0]]))
+    
+    def set_alarm(self, minutes: int):
+        """Set RTC alarm for specified minutes from now"""
+        self.rtc.alarm1_status = False
+        
+        now = time.mktime(self.rtc.datetime)
+        alarm_time = time.localtime(now + minutes * 60)
+        self.rtc.alarm1 = (alarm_time, "monthly")
+        self.rtc.alarm1_interrupt = True
+        
+        print(f"RTC alarm set for {minutes} minute(s) from now")
+
+
+class NotificationService:
+    """Handles voltage notifications"""
+    
+    @staticmethod
+    def send_low_voltage_email(voltage: float):
+        """Send email notification for low voltage"""
+        try:
+            subject = f"PiFrame Low Voltage Alert: {voltage:.2f}V"
+            body = f"""Warning: PiFrame battery voltage is low!
 
 Current Voltage: {voltage:.2f}V
-Threshold: {LOW_VOLTAGE_THRESHOLD}V
+Threshold: {Config.LOW_VOLTAGE_THRESHOLD}V
 
 Please charge or replace the battery soon.
 """
-        MAIL_CMD = "s-nail"
-        # Send to current user - mail will deliver to local mailbox
-        subprocess.run(
-            [MAIL_CMD, "-s", subject, os.getenv("USER", "root")],
-            input=body.encode(),
-            check=True
-        )
+            subprocess.run(
+                ["s-nail", "-s", subject, os.getenv("USER", "root")],
+                input=body.encode(),
+                check=True
+            )
+            print("Low voltage email sent to local user mailbox")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to send email: {e}")
+        except FileNotFoundError:
+            print("s-nail command not found")
+
+
+class ImageProcessor:
+    """Handles image fetching and processing"""
+    
+    def __init__(self, url: str):
+        self.url = url
+    
+    def fetch_image(self, voltage: float) -> Image.Image:
+        """Fetch image from server"""
+        response = requests.get(f"{self.url}?v={voltage:.2f}")
+        return Image.open(BytesIO(response.content))
+    
+    def add_voltage_warning(self, img: Image.Image, voltage: float) -> Image.Image:
+        """Add low voltage warning overlay to image"""
+        draw = ImageDraw.Draw(img)
         
-        print(f"Low voltage email sent to local user mailbox")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to send email: {e}")
-    except FileNotFoundError:
-        print(f"{MAIL_CMD} command not found.")
-
-def add_voltage_warning(img, voltage):
-    """Add low voltage warning text to image"""
-    draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24
+            )
+        except:
+            font = ImageFont.load_default()
+        
+        warning_text = f"LOW BATTERY: {voltage:.2f}V"
+        bbox = draw.textbbox((0, 0), warning_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        x = (img.width - text_width) // 2
+        y = 10
+        padding = 5
+        
+        draw.rectangle(
+            [(x - padding, y - padding), 
+             (x + text_width + padding, y + text_height + padding)],
+            fill=(255, 0, 0)
+        )
+        draw.text((x, y), warning_text, fill=(255, 255, 255), font=font)
+        
+        return img
     
-    # Try to use a larger font, fall back to default if not available
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-    except:
-        font = ImageFont.load_default()
+    def save_image(self, img: Image.Image, filename: str = "image.jpg"):
+        """Save image to disk"""
+        scriptdir = os.path.dirname(os.path.abspath(__file__))
+        filepath = os.path.join(scriptdir, filename)
+        img.save(filepath)
+
+
+class PiFrameController:
+    """Main controller for PiFrame operations"""
     
-    warning_text = f"LOW BATTERY: {voltage:.2f}V"
+    def __init__(self):
+        self.i2c = I2CController()
+        self.rtc = RTCController()
+        self.notification = NotificationService()
+        self.image_processor = ImageProcessor(Config.IMAGE_URL)
+        self.inky = auto()
+        self.pi_button = Button(Config.BUTTON_PIN)
     
-    # Get text size for background rectangle
-    bbox = draw.textbbox((0, 0), warning_text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
+    def update_display(self):
+        """Fetch and display new image"""
+        voltage = self.i2c.read_voltage()
+        print(f"Battery voltage: {voltage:.2f}V")
+        
+        # Fetch and process image
+        img = self.image_processor.fetch_image(voltage)
+        self.image_processor.save_image(img)
+        resized_img = img.resize(self.inky.resolution)
+        
+        # Add warning if voltage is low
+        if voltage < Config.LOW_VOLTAGE_THRESHOLD:
+            print(f"WARNING: Low voltage detected ({voltage:.2f}V)")
+            self.notification.send_low_voltage_email(voltage)
+            resized_img = self.image_processor.add_voltage_warning(resized_img, voltage)
+        
+        # Display image
+        try:
+            self.inky.set_image(resized_img, saturation=Config.SATURATION)
+        except TypeError:
+            self.inky.set_image(resized_img)
+        
+        self.inky.show()
     
-    # Position at top center with padding
-    x = (img.width - text_width) // 2
-    y = 10
-    padding = 5
+    def wait_for_input(self) -> Optional[str]:
+        """Wait for button input, return action or None"""
+        print(f"Waiting {Config.WAIT_SECONDS} seconds for input...")
+
+        # Clear any existing button presses
+        self.i2c.arduino_button_pressed()
+
+        start = time.time()
+        
+        while time.time() - start < Config.WAIT_SECONDS:
+            if self.pi_button.is_pressed:
+                return "cancel"
+            
+            if self.i2c.arduino_button_pressed():
+                return "restart"
+            
+            time.sleep(0.1)
+        
+        return None
     
-    # Draw background rectangle
-    draw.rectangle(
-        [(x - padding, y - padding), 
-         (x + text_width + padding, y + text_height + padding)],
-        fill=(255, 0, 0)  # Red background
-    )
+    def shutdown(self):
+        """Shutdown the system"""
+        self.rtc.set_alarm(Config.SLEEP_MINUTES)
+        response = self.i2c.shutdown()
+        print(f"I2C Shutdown command response: {response}")
+        subprocess.run(["sudo", "shutdown", "-h", "now"])
     
-    # Draw white text
-    draw.text((x, y), warning_text, fill=(255, 255, 255), font=font)
-    
-    return img
+    def run(self):
+        """Main run loop"""
+        self.update_display()
+        
+        action = self.wait_for_input()
+        
+        if action == "cancel":
+            print("Shutdown cancelled")
+            return
+        elif action == "restart":
+            print("Arduino button pressed: restarting script")
+            os.execv(__file__, ["python3", __file__])
+        else:
+            print("No button press, shutting down")
+            self.shutdown()
 
-inky = auto()
 
-voltage = read_voltage()
-print(f"Battery voltage: {voltage:.2f}V")
+def main():
+    """Entry point"""
+    controller = PiFrameController()
+    controller.run()
 
-response = requests.get(url + f"?v={voltage:.2f}")
-img = Image.open(BytesIO(response.content))
 
-img.save(os.path.join(SCRIPT_DIR, "image.jpg"))
-resizedimage = img.resize(inky.resolution)
-
-# Check for low voltage and send email if needed
-if voltage < LOW_VOLTAGE_THRESHOLD:
-    print(f"WARNING: Low voltage detected ({voltage:.2f}V < {LOW_VOLTAGE_THRESHOLD}V)")
-
-    send_low_voltage_email(voltage)
-    resizedimage = add_voltage_warning(resizedimage, voltage)
-
-try:
-    inky.set_image(resizedimage, saturation=SATURATION)
-except TypeError:
-    inky.set_image(resizedimage)
-
-inky.show()
-# inky.show() returns before it has finished.
-# clear any existing button presses to avoid wierd infinite looking photo updates
-arduino_button_pressed()
-
-print(f"Waiting {WAIT_SECONDS} seconds for input...")
-
-start = time.time()
-
-pi_button = Button(BUTTON_PIN) 
-
-while time.time() - start < WAIT_SECONDS:
-    if pi_button.is_pressed:
-        print("Shutdown cancelled")
-        exit(0)
-        break
-
-    if arduino_button_pressed():
-        print("Arduino button pressed: restarting script")
-        os.execv(__file__, ["python3", __file__]) # os.execv replaces the current process
-        break
-
-    time.sleep(0.1)
-
-print("No button press, shutting down")
-setRtcAlarm(SLEEP_MINUTES)
-piState = shutdown()
-print(f"I2C Shutdown command response: {piState}")
-subprocess.run(["sudo", "shutdown", "-h", "now"])
-
+if __name__ == "__main__":
+    main()
