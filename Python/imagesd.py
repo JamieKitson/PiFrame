@@ -56,6 +56,9 @@ def setRtcAlarm(minutes):
     # Disable 32kHz output to save a lot of power
     disable_32khz_output(rtc)
 
+    # reset alarm status to clear any existing alarm flags
+    rtc.alarm1_status = False
+
     # Set alarm for 'minutes' minutes from now
     now = time.mktime(rtc.datetime)
     alarm_time = time.localtime(now + minutes * 60)
