@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import requests
 import subprocess
 import os
@@ -9,7 +10,7 @@ import board
 
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-from inky.auto import auto
+from inky.auto import auto as inky_auto
 from gpiozero import Button
 from smbus2 import SMBus, i2c_msg
 from enum import IntEnum
@@ -150,7 +151,7 @@ def add_voltage_warning(img, voltage):
     
     return img
 
-inky = auto()
+inky = inky_auto()
 
 voltage = read_voltage()
 print(f"Battery voltage: {voltage:.2f}V")
@@ -192,7 +193,7 @@ while time.time() - start < WAIT_SECONDS:
 
     if arduino_button_pressed():
         print("Arduino button pressed: restarting script")
-        os.execv(__file__, ["python3", __file__]) # os.execv replaces the current process
+        os.execv(sys.executable, [sys.executable, __file__]) # os.execv replaces the current process
         break
 
     time.sleep(0.1)
