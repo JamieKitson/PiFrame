@@ -51,6 +51,10 @@ def arduino_button_pressed():
     while i2c(I2CCommand.READ_BUTTON) == 1:
         button_pressed = True
         time.sleep(0.1)  # Debounce
+
+    if button_pressed:
+        time.sleep(0.5)  # Allow I2C to fully close before restart
+
     return button_pressed
 
 def shutdown():
