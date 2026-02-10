@@ -74,40 +74,46 @@ class I2CController:
         """Send shutdown command to Arduino"""
         return self._send_command(I2CCommand.SHUTDOWN)
 
-# rtc.disable_oscillator does not appear to work, so we implement our own
-def disable_32khz_output(rtc):
-    """Disable the 32kHz output pin on DS3231"""
+class RTCController:
+    """Handles DS3231 RTC configuration"""
+    
     DS3231_STATUSREG = 0x0F
     EN32KHZ_BIT = 3
     
-    # Read current status register
-    status = bytearray(1)
-    rtc.i2c_device.write_then_readinto(bytes([DS3231_STATUSREG]), status)
+    def __init__(self):
+        self.i2c_bus = board.I2C()
+        self.rtc = adafruit_ds3231.DS3231(self.i2c_bus)
     
-    # Clear bit 3 (EN32kHz)
-    status[0] &= ~(1 << EN32KHZ_BIT)
+    def _disable_32khz_output(self):
+        """Disable the 32kHz output pin on DS3231 to save power"""
+        # Read current status register
+        status = bytearray(1)
+        self.rtc.i2c_device.write_then_readinto(
+            bytes([self.DS3231_STATUSREG]), status
+        )
+        
+        # Clear bit 3 (EN32kHz)
+        status[0] &= ~(1 << self.EN32KHZ_BIT)
+        
+        # Write back
+        self.rtc.i2c_device.write(bytes([self.DS3231_STATUSREG, status[0]]))
     
-    # Write back
-    rtc.i2c_device.write(bytes([DS3231_STATUSREG, status[0]]))
-
-def setRtcAlarm(minutes):
-    i2c_bus = board.I2C()  # uses board.SCL and board.SDA
-    rtc = adafruit_ds3231.DS3231(i2c_bus)
-
-    # Disable 32kHz output to save a lot of power
-    disable_32khz_output(rtc)
-
-    # reset alarm status to clear any existing alarm flags
-    rtc.alarm1_status = False
-
-    # Set alarm for 'minutes' minutes from now
-    now = time.mktime(rtc.datetime)
-    alarm_time = time.localtime(now + minutes * 60)
-    rtc.alarm1 = (alarm_time, "monthly")
-    
-    # Enable alarm interrupt mode (after alarm is configured)
-    rtc.alarm1_interrupt = True
-    print(f"RTC alarm set for {minutes} minute(s) from now")
+    def set_alarm(self, minutes: int):
+        """Set RTC alarm to wake in specified minutes"""
+        # Disable 32kHz output to save a lot of power
+        self._disable_32khz_output()
+        
+        # Reset alarm status to clear any existing alarm flags
+        self.rtc.alarm1_status = False
+        
+        # Set alarm for 'minutes' minutes from now
+        now = time.mktime(self.rtc.datetime)
+        alarm_time = time.localtime(now + minutes * 60)
+        self.rtc.alarm1 = (alarm_time, "monthly")
+        
+        # Enable alarm interrupt mode (after alarm is configured)
+        self.rtc.alarm1_interrupt = True
+        print(f"RTC alarm set for {minutes} minute(s) from now")
 
 def send_low_voltage_email(voltage):
     """Send email notification for low voltage using local mail"""
@@ -169,6 +175,7 @@ def add_voltage_warning(img, voltage):
     return img
 
 i2c_controller = I2CController()
+rtc_controller = RTCController()
 inky = inky_auto()
 
 voltage = i2c_controller.read_voltage()
@@ -217,7 +224,7 @@ while time.time() - start < Config.WAIT_SECONDS:
     time.sleep(0.1)
 
 print("No button press, shutting down")
-setRtcAlarm(Config.SLEEP_MINUTES)
+rtc_controller.set_alarm(Config.SLEEP_MINUTES)
 piState = i2c_controller.shutdown()
 print(f"I2C Shutdown command response: {piState}")
 subprocess.run(["sudo", "shutdown", "-h", "now"])
