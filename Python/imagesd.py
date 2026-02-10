@@ -229,13 +229,13 @@ class PiFrameApp:
             img = self.image_handler.add_voltage_warning(img, voltage)
         
         self.image_handler.display_image(img, os.path.join(SCRIPT_DIR, "image.jpg"))
-        
-        # Clear any button presses that occurred during display update
-        self.i2c.arduino_button_pressed()
     
     def wait_for_input(self) -> bool:
         """Wait for button input. Returns True if shutdown should proceed."""
         print(f"Waiting {Config.WAIT_BEFORE_SHUTDOWN_SECONDS} seconds for input...")
+        
+        # Clear any button presses that occurred during display update
+        self.i2c.arduino_button_pressed()
         
         start = time.time()
         
