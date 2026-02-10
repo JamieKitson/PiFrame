@@ -31,7 +31,8 @@ try:
     v = cgi.FieldStorage().getvalue('v')
     
     with open('log.log', 'a') as file:
-        file.write(datetime.datetime.now().strftime('%x %X ') + f"{filename} {v} \n")
+        dt = datetime.datetime.now().replace(microsecond=0).isoformat().replace('T', ' ')
+        file.write(f"{dt} {filename} {v} \n")
 
     filepath = os.path.join(IMAGE_FOLDER, filename)
 
