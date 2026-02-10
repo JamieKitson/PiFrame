@@ -15,15 +15,18 @@ from gpiozero import Button
 from smbus2 import SMBus, i2c_msg
 from enum import IntEnum
 
-url = "http://192.168.1.4/py/pics3.cgi"
-BUTTON_PIN = 5
-WAIT_SECONDS = 45
-SLEEP_MINUTES = 5
-LOW_VOLTAGE_THRESHOLD = 6.75
-SATURATION = 0.5
-
 # Get the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+class Config:
+    """Configuration for PiFrame"""
+    IMAGE_URL: str = "http://192.168.1.4/py/pics3.cgi"
+    BUTTON_PIN: int = 5
+    WAIT_SECONDS: int = 45
+    SLEEP_MINUTES: int = 5
+    LOW_VOLTAGE_THRESHOLD: float = 6.75
+    SATURATION: float = 0.5
+    I2C_ADDRESS: int = 0x12
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -33,8 +36,8 @@ class I2CCommand(IntEnum):
 def i2c(cmd):
     try:
         with SMBus(1) as bus:
-            bus.write_byte(0x12, cmd)
-            msg = i2c_msg.read(0x12, 1)
+            bus.write_byte(Config.I2C_ADDRESS, cmd)
+            msg = i2c_msg.read(Config.I2C_ADDRESS, 1)
             bus.i2c_rdwr(msg)
             data = list(msg)
             return data[0]
@@ -103,7 +106,7 @@ def send_low_voltage_email(voltage):
         body = f"""Warning: PiFrame battery voltage is low!
 
 Current Voltage: {voltage:.2f}V
-Threshold: {LOW_VOLTAGE_THRESHOLD}V
+Threshold: {Config.LOW_VOLTAGE_THRESHOLD}V
 
 Please charge or replace the battery soon.
 """
@@ -160,21 +163,21 @@ inky = inky_auto()
 voltage = read_voltage()
 print(f"Battery voltage: {voltage:.2f}V")
 
-response = requests.get(url + f"?v={voltage:.2f}")
+response = requests.get(Config.IMAGE_URL + f"?v={voltage:.2f}")
 img = Image.open(BytesIO(response.content))
 
 img.save(os.path.join(SCRIPT_DIR, "image.jpg"))
 resizedimage = img.resize(inky.resolution)
 
 # Check for low voltage and send email if needed
-if voltage < LOW_VOLTAGE_THRESHOLD:
-    print(f"WARNING: Low voltage detected ({voltage:.2f}V < {LOW_VOLTAGE_THRESHOLD}V)")
+if voltage < Config.LOW_VOLTAGE_THRESHOLD:
+    print(f"WARNING: Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
 
     send_low_voltage_email(voltage)
     resizedimage = add_voltage_warning(resizedimage, voltage)
 
 try:
-    inky.set_image(resizedimage, saturation=SATURATION)
+    inky.set_image(resizedimage, saturation=Config.SATURATION)
 except TypeError:
     inky.set_image(resizedimage)
 
@@ -183,13 +186,13 @@ inky.show()
 # clear any existing button presses to avoid wierd infinite looking photo updates
 arduino_button_pressed()
 
-print(f"Waiting {WAIT_SECONDS} seconds for input...")
+print(f"Waiting {Config.WAIT_SECONDS} seconds for input...")
 
 start = time.time()
 
-pi_button = Button(BUTTON_PIN) 
+pi_button = Button(Config.BUTTON_PIN) 
 
-while time.time() - start < WAIT_SECONDS:
+while time.time() - start < Config.WAIT_SECONDS:
     if pi_button.is_pressed:
         print("Shutdown cancelled")
         exit(0)
@@ -203,8 +206,7 @@ while time.time() - start < WAIT_SECONDS:
     time.sleep(0.1)
 
 print("No button press, shutting down")
-setRtcAlarm(SLEEP_MINUTES)
+setRtcAlarm(Config.SLEEP_MINUTES)
 piState = shutdown()
 print(f"I2C Shutdown command response: {piState}")
 subprocess.run(["sudo", "shutdown", "-h", "now"])
-
