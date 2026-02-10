@@ -27,42 +27,52 @@ class Config:
     LOW_VOLTAGE_THRESHOLD: float = 6.75
     SATURATION: float = 0.5
     I2C_ADDRESS: int = 0x12
+    VOLTAGE_SCALE_FACTOR: float = 25.0
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
     READ_VOLTAGE = 0x02
     SHUTDOWN = 0x10
 
-def i2c(cmd):
-    try:
-        with SMBus(1) as bus:
-            bus.write_byte(Config.I2C_ADDRESS, cmd)
-            msg = i2c_msg.read(Config.I2C_ADDRESS, 1)
-            bus.i2c_rdwr(msg)
-            data = list(msg)
-            return data[0]
-    except Exception as e:
-        print(f"I2C communication error: {e}")
-        return -1
-
-def read_voltage():
-    voltage = i2c(I2CCommand.READ_VOLTAGE)
-    return voltage / 25  # Convert to volts
-
-def arduino_button_pressed():
-    button_pressed = False
-    while i2c(I2CCommand.READ_BUTTON) == 1:
-        button_pressed = True
-        time.sleep(0.1)  # Debounce
-
-    if button_pressed:
-        time.sleep(0.5)  # Allow I2C to fully close before restart
-
-    return button_pressed
-
-def shutdown():
-    """Send shutdown command"""
-    return i2c(I2CCommand.SHUTDOWN)
+class I2CController:
+    """Handles I2C communication with Arduino"""
+    
+    def __init__(self, address: int = Config.I2C_ADDRESS):
+        self.address = address
+    
+    def _send_command(self, cmd: int) -> int:
+        """Send I2C command and read single byte response"""
+        try:
+            with SMBus(1) as bus:
+                bus.write_byte(self.address, cmd)
+                msg = i2c_msg.read(self.address, 1)
+                bus.i2c_rdwr(msg)
+                data = list(msg)
+                return data[0]
+        except Exception as e:
+            print(f"I2C communication error: {e}")
+            return -1
+    
+    def read_voltage(self) -> float:
+        """Read battery voltage from Arduino"""
+        raw_voltage = self._send_command(I2CCommand.READ_VOLTAGE)
+        return raw_voltage / Config.VOLTAGE_SCALE_FACTOR
+    
+    def arduino_button_pressed(self) -> bool:
+        """Check if Arduino button is pressed (with debounce)"""
+        button_pressed = False
+        while self._send_command(I2CCommand.READ_BUTTON) == 1:
+            button_pressed = True
+            time.sleep(0.1)  # Debounce
+        
+        if button_pressed:
+            time.sleep(0.5)  # Allow I2C to fully close before restart
+        
+        return button_pressed
+    
+    def shutdown(self) -> int:
+        """Send shutdown command to Arduino"""
+        return self._send_command(I2CCommand.SHUTDOWN)
 
 # rtc.disable_oscillator does not appear to work, so we implement our own
 def disable_32khz_output(rtc):
@@ -158,9 +168,10 @@ def add_voltage_warning(img, voltage):
     
     return img
 
+i2c_controller = I2CController()
 inky = inky_auto()
 
-voltage = read_voltage()
+voltage = i2c_controller.read_voltage()
 print(f"Battery voltage: {voltage:.2f}V")
 
 response = requests.get(Config.IMAGE_URL + f"?v={voltage:.2f}")
@@ -184,7 +195,7 @@ except TypeError:
 inky.show()
 # inky.show() returns before it has finished.
 # clear any existing button presses to avoid wierd infinite looking photo updates
-arduino_button_pressed()
+i2c_controller.arduino_button_pressed()
 
 print(f"Waiting {Config.WAIT_SECONDS} seconds for input...")
 
@@ -198,7 +209,7 @@ while time.time() - start < Config.WAIT_SECONDS:
         exit(0)
         break
 
-    if arduino_button_pressed():
+    if i2c_controller.arduino_button_pressed():
         print("Arduino button pressed: restarting script")
         os.execv(sys.executable, [sys.executable, __file__]) # os.execv replaces the current process
         break
@@ -207,6 +218,6 @@ while time.time() - start < Config.WAIT_SECONDS:
 
 print("No button press, shutting down")
 setRtcAlarm(Config.SLEEP_MINUTES)
-piState = shutdown()
+piState = i2c_controller.shutdown()
 print(f"I2C Shutdown command response: {piState}")
 subprocess.run(["sudo", "shutdown", "-h", "now"])
