@@ -28,6 +28,8 @@ class Config:
     SATURATION: float = 0.5
     I2C_ADDRESS: int = 0x12
     VOLTAGE_SCALE_FACTOR: float = 25.0
+    FONT_PATH: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    FONT_SIZE: int = 24
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -115,6 +117,65 @@ class RTCController:
         self.rtc.alarm1_interrupt = True
         print(f"RTC alarm set for {minutes} minute(s) from now")
 
+class ImageHandler:
+    """Handles image fetching, processing, and display"""
+    
+    def __init__(self, inky_display):
+        self.display = inky_display
+    
+    def fetch_image(self, voltage: float) -> Image.Image:
+        """Fetch image from server"""
+        response = requests.get(Config.IMAGE_URL + f"?v={voltage:.2f}")
+        return Image.open(BytesIO(response.content))
+    
+    def add_voltage_warning(self, img: Image.Image, voltage: float) -> Image.Image:
+        """Add low voltage warning overlay to image"""
+        draw = ImageDraw.Draw(img)
+        
+        # Try to use a larger font, fall back to default if not available
+        try:
+            font = ImageFont.truetype(Config.FONT_PATH, Config.FONT_SIZE)
+        except:
+            font = ImageFont.load_default()
+        
+        warning_text = f"LOW BATTERY: {voltage:.2f}V"
+        
+        # Get text size for background rectangle
+        bbox = draw.textbbox((0, 0), warning_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        # Position at top center with padding
+        x = (img.width - text_width) // 2
+        y = 10
+        padding = 5
+        
+        # Draw background rectangle
+        draw.rectangle(
+            [(x - padding, y - padding), 
+             (x + text_width + padding, y + text_height + padding)],
+            fill=(255, 0, 0)  # Red background
+        )
+        
+        # Draw white text
+        draw.text((x, y), warning_text, fill=(255, 255, 255), font=font)
+        
+        return img
+    
+    def display_image(self, img: Image.Image, save_path: str = None):
+        """Resize and display image on e-ink display"""
+        if save_path:
+            img.save(save_path)
+        
+        resized = img.resize(self.display.resolution)
+        
+        try:
+            self.display.set_image(resized, saturation=Config.SATURATION)
+        except TypeError:
+            self.display.set_image(resized)
+        
+        self.display.show()
+
 def send_low_voltage_email(voltage):
     """Send email notification for low voltage using local mail"""
     try:
@@ -140,66 +201,24 @@ Please charge or replace the battery soon.
     except FileNotFoundError:
         print(f"{MAIL_CMD} command not found.")
 
-def add_voltage_warning(img, voltage):
-    """Add low voltage warning text to image"""
-    draw = ImageDraw.Draw(img)
-    
-    # Try to use a larger font, fall back to default if not available
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-    except:
-        font = ImageFont.load_default()
-    
-    warning_text = f"LOW BATTERY: {voltage:.2f}V"
-    
-    # Get text size for background rectangle
-    bbox = draw.textbbox((0, 0), warning_text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-    
-    # Position at top center with padding
-    x = (img.width - text_width) // 2
-    y = 10
-    padding = 5
-    
-    # Draw background rectangle
-    draw.rectangle(
-        [(x - padding, y - padding), 
-         (x + text_width + padding, y + text_height + padding)],
-        fill=(255, 0, 0)  # Red background
-    )
-    
-    # Draw white text
-    draw.text((x, y), warning_text, fill=(255, 255, 255), font=font)
-    
-    return img
-
 i2c_controller = I2CController()
 rtc_controller = RTCController()
 inky = inky_auto()
+image_handler = ImageHandler(inky)
 
 voltage = i2c_controller.read_voltage()
 print(f"Battery voltage: {voltage:.2f}V")
 
-response = requests.get(Config.IMAGE_URL + f"?v={voltage:.2f}")
-img = Image.open(BytesIO(response.content))
-
-img.save(os.path.join(SCRIPT_DIR, "image.jpg"))
-resizedimage = img.resize(inky.resolution)
+img = image_handler.fetch_image(voltage)
 
 # Check for low voltage and send email if needed
 if voltage < Config.LOW_VOLTAGE_THRESHOLD:
     print(f"WARNING: Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
-
     send_low_voltage_email(voltage)
-    resizedimage = add_voltage_warning(resizedimage, voltage)
+    img = image_handler.add_voltage_warning(img, voltage)
 
-try:
-    inky.set_image(resizedimage, saturation=Config.SATURATION)
-except TypeError:
-    inky.set_image(resizedimage)
+image_handler.display_image(img, os.path.join(SCRIPT_DIR, "image.jpg"))
 
-inky.show()
 # inky.show() returns before it has finished.
 # clear any existing button presses to avoid wierd infinite looking photo updates
 i2c_controller.arduino_button_pressed()
