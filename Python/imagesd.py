@@ -176,74 +176,102 @@ class ImageHandler:
         
         self.display.show()
 
-def send_low_voltage_email(voltage):
-    """Send email notification for low voltage using local mail"""
-    try:
-        subject = f"PiFrame Low Voltage Alert: {voltage:.2f}V"
-        body = f"""Warning: PiFrame battery voltage is low!
+class NotificationService:
+    """Handles system notifications"""
+    
+    @staticmethod
+    def send_low_voltage_email(voltage: float):
+        """Send email notification for low voltage using local mail"""
+        try:
+            subject = f"PiFrame Low Voltage Alert: {voltage:.2f}V"
+            body = f"""Warning: PiFrame battery voltage is low!
 
 Current Voltage: {voltage:.2f}V
 Threshold: {Config.LOW_VOLTAGE_THRESHOLD}V
 
 Please charge or replace the battery soon.
 """
-        MAIL_CMD = "s-nail"
-        # Send to current user - mail will deliver to local mailbox
-        subprocess.run(
-            [MAIL_CMD, "-s", subject, os.getenv("USER", "root")],
-            input=body.encode(),
-            check=True
-        )
+            MAIL_CMD = "s-nail"
+            # Send to current user - mail will deliver to local mailbox
+            subprocess.run(
+                [MAIL_CMD, "-s", subject, os.getenv("USER", "root")],
+                input=body.encode(),
+                check=True
+            )
+            
+            print(f"Low voltage email sent to local user mailbox")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to send email: {e}")
+        except FileNotFoundError:
+            print(f"{MAIL_CMD} command not found.")
+
+class PiFrameApp:
+    """Main application controller"""
+    
+    def __init__(self):
+        self.i2c = I2CController()
+        self.rtc = RTCController()
+        self.image_handler = ImageHandler(inky_auto())
+        self.pi_button = Button(Config.BUTTON_PIN)
+        self.notifications = NotificationService()
+    
+    def check_and_display_image(self):
+        """Fetch and display image with voltage warning if needed"""
+        voltage = self.i2c.read_voltage()
+        print(f"Battery voltage: {voltage:.2f}V")
         
-        print(f"Low voltage email sent to local user mailbox")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to send email: {e}")
-    except FileNotFoundError:
-        print(f"{MAIL_CMD} command not found.")
+        img = self.image_handler.fetch_image(voltage)
+        
+        # Check for low voltage
+        if voltage < Config.LOW_VOLTAGE_THRESHOLD:
+            print(f"WARNING: Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
+            self.notifications.send_low_voltage_email(voltage)
+            img = self.image_handler.add_voltage_warning(img, voltage)
+        
+        self.image_handler.display_image(img, os.path.join(SCRIPT_DIR, "image.jpg"))
+        
+        # Clear any button presses that occurred during display update
+        self.i2c.arduino_button_pressed()
+    
+    def wait_for_input(self) -> bool:
+        """Wait for button input. Returns True if shutdown should proceed."""
+        print(f"Waiting {Config.WAIT_SECONDS} seconds for input...")
+        
+        start = time.time()
+        
+        while time.time() - start < Config.WAIT_SECONDS:
+            if self.pi_button.is_pressed:
+                print("Shutdown cancelled")
+                return False
+            
+            if self.i2c.arduino_button_pressed():
+                print("Arduino button pressed: restarting script")
+                os.execv(sys.executable, [sys.executable, __file__])
+                # Execution never reaches here
+            
+            time.sleep(0.1)
+        
+        return True
+    
+    def shutdown(self):
+        """Prepare for shutdown and power off"""
+        print("No button press, shutting down")
+        self.rtc.set_alarm(Config.SLEEP_MINUTES)
+        pi_state = self.i2c.shutdown()
+        print(f"I2C Shutdown command response: {pi_state}")
+        subprocess.run(["sudo", "shutdown", "-h", "now"])
+    
+    def run(self):
+        """Main application entry point"""
+        self.check_and_display_image()
+        
+        if self.wait_for_input():
+            self.shutdown()
 
-i2c_controller = I2CController()
-rtc_controller = RTCController()
-inky = inky_auto()
-image_handler = ImageHandler(inky)
+def main():
+    """Application entry point"""
+    app = PiFrameApp()
+    app.run()
 
-voltage = i2c_controller.read_voltage()
-print(f"Battery voltage: {voltage:.2f}V")
-
-img = image_handler.fetch_image(voltage)
-
-# Check for low voltage and send email if needed
-if voltage < Config.LOW_VOLTAGE_THRESHOLD:
-    print(f"WARNING: Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
-    send_low_voltage_email(voltage)
-    img = image_handler.add_voltage_warning(img, voltage)
-
-image_handler.display_image(img, os.path.join(SCRIPT_DIR, "image.jpg"))
-
-# inky.show() returns before it has finished.
-# clear any existing button presses to avoid wierd infinite looking photo updates
-i2c_controller.arduino_button_pressed()
-
-print(f"Waiting {Config.WAIT_SECONDS} seconds for input...")
-
-start = time.time()
-
-pi_button = Button(Config.BUTTON_PIN) 
-
-while time.time() - start < Config.WAIT_SECONDS:
-    if pi_button.is_pressed:
-        print("Shutdown cancelled")
-        exit(0)
-        break
-
-    if i2c_controller.arduino_button_pressed():
-        print("Arduino button pressed: restarting script")
-        os.execv(sys.executable, [sys.executable, __file__]) # os.execv replaces the current process
-        break
-
-    time.sleep(0.1)
-
-print("No button press, shutting down")
-rtc_controller.set_alarm(Config.SLEEP_MINUTES)
-piState = i2c_controller.shutdown()
-print(f"I2C Shutdown command response: {piState}")
-subprocess.run(["sudo", "shutdown", "-h", "now"])
+if __name__ == "__main__":
+    main()
