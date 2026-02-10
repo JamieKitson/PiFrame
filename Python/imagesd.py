@@ -21,15 +21,15 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 class Config:
     """Configuration for PiFrame"""
     IMAGE_URL: str = "http://192.168.1.4/py/pics3.cgi"
-    BUTTON_PIN: int = 5
-    WAIT_SECONDS: int = 45
-    SLEEP_MINUTES: int = 5
+    PI_BUTTON_PIN: int = 5
+    WAIT_BEFORE_SHUTDOWN_SECONDS: int = 45
+    PI_POWER_SLEEP_MINUTES: int = 5
     LOW_VOLTAGE_THRESHOLD: float = 6.75
-    SATURATION: float = 0.5
-    I2C_ADDRESS: int = 0x12
+    IMAGE_SATURATION: float = 0.5
+    ARDUINO_I2C_ADDRESS: int = 0x12
     VOLTAGE_SCALE_FACTOR: float = 25.0
-    FONT_PATH: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    FONT_SIZE: int = 24
+    WARNING_FONT_PATH: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    WARNING_FONT_SIZE: int = 24
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -39,7 +39,7 @@ class I2CCommand(IntEnum):
 class I2CController:
     """Handles I2C communication with Arduino"""
     
-    def __init__(self, address: int = Config.I2C_ADDRESS):
+    def __init__(self, address: int = Config.ARDUINO_I2C_ADDRESS):
         self.address = address
     
     def _send_command(self, cmd: int) -> int:
@@ -134,7 +134,7 @@ class ImageHandler:
         
         # Try to use a larger font, fall back to default if not available
         try:
-            font = ImageFont.truetype(Config.FONT_PATH, Config.FONT_SIZE)
+            font = ImageFont.truetype(Config.WARNING_FONT_PATH, Config.WARNING_FONT_SIZE)
         except:
             font = ImageFont.load_default()
         
@@ -170,7 +170,7 @@ class ImageHandler:
         resized = img.resize(self.display.resolution)
         
         try:
-            self.display.set_image(resized, saturation=Config.SATURATION)
+            self.display.set_image(resized, saturation=Config.IMAGE_SATURATION)
         except TypeError:
             self.display.set_image(resized)
         
@@ -212,7 +212,7 @@ class PiFrameApp:
         self.i2c = I2CController()
         self.rtc = RTCController()
         self.image_handler = ImageHandler(inky_auto())
-        self.pi_button = Button(Config.BUTTON_PIN)
+        self.pi_button = Button(Config.PI_BUTTON_PIN)
         self.notifications = NotificationService()
     
     def check_and_display_image(self):
@@ -235,11 +235,11 @@ class PiFrameApp:
     
     def wait_for_input(self) -> bool:
         """Wait for button input. Returns True if shutdown should proceed."""
-        print(f"Waiting {Config.WAIT_SECONDS} seconds for input...")
+        print(f"Waiting {Config.WAIT_BEFORE_SHUTDOWN_SECONDS} seconds for input...")
         
         start = time.time()
         
-        while time.time() - start < Config.WAIT_SECONDS:
+        while time.time() - start < Config.WAIT_BEFORE_SHUTDOWN_SECONDS:
             if self.pi_button.is_pressed:
                 print("Shutdown cancelled")
                 return False
@@ -256,7 +256,7 @@ class PiFrameApp:
     def shutdown(self):
         """Prepare for shutdown and power off"""
         print("No button press, shutting down")
-        self.rtc.set_alarm(Config.SLEEP_MINUTES)
+        self.rtc.set_alarm(Config.PI_POWER_SLEEP_MINUTES)
         pi_state = self.i2c.shutdown()
         print(f"I2C Shutdown command response: {pi_state}")
         subprocess.run(["sudo", "shutdown", "-h", "now"])
