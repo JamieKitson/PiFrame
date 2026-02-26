@@ -23,7 +23,7 @@ class Config:
     IMAGE_URL: str = "http://192.168.1.4/py/pics3.cgi"
     PI_BUTTON_PIN: int = 5
     WAIT_BEFORE_SHUTDOWN_SECONDS: int = 45
-    PI_POWER_SLEEP_MINUTES: int = 5
+    PI_POWER_SLEEP_MINUTES: int = 24 * 60
     LOW_VOLTAGE_THRESHOLD: float = 6.75
     IMAGE_SATURATION: float = 0.5
     ARDUINO_I2C_ADDRESS: int = 0x12
