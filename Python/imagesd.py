@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import requests
 import subprocess
 import os
@@ -65,6 +66,9 @@ class I2CController:
         while self._send_command(I2CCommand.READ_BUTTON) == 1:
             button_pressed = True
             time.sleep(0.1)  # Debounce
+        
+        if button_pressed:
+            time.sleep(0.5)  # Allow I2C to fully close before restart
         
         return button_pressed
     
@@ -242,19 +246,13 @@ class PiFrameApp:
             
             if self.i2c.arduino_button_pressed():
                 print("Arduino button pressed: restarting script")
-                return "restart"
+                os.execv(sys.executable, [sys.executable, __file__])
+                # Execution never reaches here
             
             time.sleep(0.1)
         
         return True
     
-    def cleanup(self):
-        """Release hardware resources before restart"""
-        try:
-            self.rtc.i2c_bus.deinit()
-        except Exception:
-            pass
-
     def shutdown(self):
         """Prepare for shutdown and power off"""
         print("No button press, shutting down")
@@ -263,25 +261,17 @@ class PiFrameApp:
         print(f"I2C Shutdown command response: {pi_state}")
         subprocess.run(["sudo", "shutdown", "-h", "now"])
     
-    def run(self) -> bool:
-        """Main application entry point. Returns True if restart is needed."""
+    def run(self):
+        """Main application entry point"""
         self.check_and_display_image()
         
-        result = self.wait_for_input()
-        if result == "restart":
-            return True
-        if result:
+        if self.wait_for_input():
             self.shutdown()
-        return False
 
 def main():
     """Application entry point"""
-    while True:
-        app = PiFrameApp()
-        restart = app.run()
-        if not restart:
-            break
-        app.cleanup()
+    app = PiFrameApp()
+    app.run()
 
 if __name__ == "__main__":
     main()
