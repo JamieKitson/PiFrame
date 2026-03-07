@@ -4,6 +4,7 @@ from PIL import Image, ImageFilter
 from io import BytesIO
 
 IMAGE_FOLDER = "/srv/http/192.168.1.4/resized/"
+LOG_FILE = "log.log"
 
 def crop(img, target_w, target_h):
 
@@ -17,6 +18,30 @@ def crop(img, target_w, target_h):
 	return img.crop((left, top, right, bottom))
 
 
+def get_last_logged_image(log_path, image_names):
+    if not os.path.exists(log_path):
+        return None
+
+    try:
+        with open(log_path, 'r', encoding='utf-8', errors='ignore') as log_file:
+            last_line = ""
+            for line in log_file:
+                if line.strip():
+                    last_line = line.strip()
+    except OSError:
+        return None
+
+    if not last_line:
+        return None
+
+    haystack = f" {last_line} "
+    for image_name in sorted(image_names, key=len, reverse=True):
+        if f" {image_name} " in haystack:
+            return image_name
+
+    return None
+
+
 try:
     images = [f for f in os.listdir(IMAGE_FOLDER)
         if f.lower().endswith((".jpg", ".jpeg", ".png"))]
@@ -26,11 +51,15 @@ try:
         print("No images found")
         sys.exit(0)
 
+    last_image = get_last_logged_image(LOG_FILE, images)
+    if last_image and len(images) > 1:
+        images.remove(last_image)
+
     filename = random.choice(images)
 
     v = cgi.FieldStorage().getvalue('v')
     
-    with open('log.log', 'a') as file:
+    with open(LOG_FILE, 'a') as file:
         file.write(datetime.datetime.now().strftime('%x %X ') + f"{filename} {v} \n")
 
     filepath = os.path.join(IMAGE_FOLDER, filename)
