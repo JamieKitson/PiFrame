@@ -1,9 +1,11 @@
 [Unit]
 Description=Run piframe script when WiFi is up
-After=network-online.target
-Wants=network-online.target
+After=network-online.target nss-lookup.target wpa_supplicant@wlan0.service dhcpcd.service
+Wants=network-online.target nss-lookup.target
 
 [Service]
+ExecStartPre=/bin/bash -c 'until ping -c1 -W2 8.8.8.8 &>/dev/null; do sleep 1; done'
+ExecStartPre=/bin/bash -c 'until ping -c1 -W2 github.com &>/dev/null; do sleep 1; done'
 ExecStart=/bin/bash -c "cd /home/jamie/PiFrame && git pull && source /home/jamie/.virtualenvs/pimoroni/bin/activate && python /home/jamie/PiFrame/Python/imagesd.py"
 StandardOutput=journal
 StandardError=journal
