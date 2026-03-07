@@ -42,14 +42,17 @@ class I2CController:
         self.address = address
     
     def _send_command(self, cmd: int) -> int:
-        """Send I2C command and read single byte response"""
+        """Send I2C command and read single byte response.
+        Uses a single i2c_rdwr call with both messages so the Linux I2C driver
+        issues a repeated START (Sr) rather than STOP+START, preventing a race
+        where a second write could overwrite currentRegister on the Arduino
+        before onI2CRequest fires."""
         try:
             with SMBus(1) as bus:
-                bus.write_byte(self.address, cmd)
-                msg = i2c_msg.read(self.address, 1)
-                bus.i2c_rdwr(msg)
-                data = list(msg)
-                return data[0]
+                write = i2c_msg.write(self.address, [cmd])
+                read = i2c_msg.read(self.address, 1)
+                bus.i2c_rdwr(write, read)
+                return list(read)[0]
         except Exception as e:
             print(f"I2C communication error: {e}")
             return -1
