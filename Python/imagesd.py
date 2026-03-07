@@ -67,6 +67,9 @@ class I2CController:
             button_pressed = True
             time.sleep(0.1)  # Debounce
         
+        if button_pressed:
+            time.sleep(0.5)  # Allow I2C to fully close before restart
+        
         return button_pressed
     
     def shutdown(self) -> int:
@@ -242,7 +245,6 @@ class PiFrameApp:
                 return False
             
             if self.i2c.arduino_button_pressed():
-                time.sleep(0.5)  # Allow I2C to fully close before restart
                 print("Arduino button pressed: restarting script")
                 os.execv(sys.executable, [sys.executable, __file__])
                 # Execution never reaches here
