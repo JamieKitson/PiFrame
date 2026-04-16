@@ -1,479 +1,199 @@
-# PiFrame - Battery-Powered E-Ink Photo Frame
+# PiFrame
 
-A low-power digital photo frame using a Raspberry Pi Zero, Arduino power management, e-ink display, and RTC-based sleep scheduling.
+Battery-powered color e-ink photo frame driven by a Raspberry Pi and an Arduino power controller.
 
 Warning, below has been written by an LLM only lightly edited by me and may not be 100% correct.
 
-## Table of Contents
-
-- [Features](#features)
-- [Hardware Requirements](#hardware-requirements)
-- [System Architecture](#system-architecture)
-- [Hardware Setup](#hardware-setup)
-- [Software Installation](#software-installation)
-- [Configuration](#configuration)
-- [Operation](#operation)
-- [I2C Communication Protocol](#i2c-communication-protocol)
-- [Power Management](#power-management)
-- [Troubleshooting](#troubleshooting)
-
-## Features
-
-- Low power consumption with sleep/wake cycles
-- E-ink display for minimal power draw
-- Battery voltage monitoring with warnings
-- RTC-based automatic wake-up
-- Arduino controls Pi power completely
-- Button controls for manual operation
-- Fetches images from network server
-- Shows voltage warning overlay when battery is low
-
-## Hardware Requirements
-
-### Core Components
-
-- Raspberry Pi Zero W (or Zero 2 W)
-- Arduino Pro Mini (3.3V, 8MHz) or similar
-- Inky wHAT/Impression e-ink display (Pimoroni)
-- DS3231 RTC module with alarm capability
-- LiPo battery (2S, 7.4V nominal)
-
-### Additional Components
-
-- 5V boost converter for Pi
-- 3.3V regulator for Arduino
-- PCA9515A I2C buffer/isolator module
-- Voltage divider: 20kΩ + 10kΩ resistors for battery monitoring
-- N-channel MOSFET (logic level)
-- P-channel MOSFET for high-side switching
-- Push button (momentary switch)
-
-### Wiring Diagram
-
-```
-LiPo Battery (7.4V)
-    ├─→ Arduino A0 (via voltage divider: 20kΩ / 10kΩ)
-    ├─→ P-MOSFET Source
-    └─→ 3.3V Regulator → Arduino VCC
-
-Pi Power Control:
-    Arduino D7 → N-MOSFET Gate
-    N-MOSFET Drain → P-MOSFET Gate
-    P-MOSFET Source → Battery+
-    P-MOSFET Drain → 5V Boost Converter → Pi 5V
-
-Buttons:
-    Arduino D3 → Push Button → GND
-    Arduino D2 → DS3231 SQW/INT (RTC alarm)
-
-I2C Bus (via PCA9515A buffer):
-    Side 0 (Pi):
-        Pi 3.3V ────────────→ PCA9515A VCC_0
-        Pi GPIO 2 (SDA) ────→ PCA9515A SDA_0
-        Pi GPIO 3 (SCL) ────→ PCA9515A SCL_0
-    
-    Side 1 (Arduino + RTC):
-        Arduino A4 (SDA) ───→ PCA9515A SDA_1
-        Arduino A5 (SCL) ───→ PCA9515A SCL_1
-        DS3231 SDA ─────────→ PCA9515A SDA_1
-        DS3231 SCL ─────────→ PCA9515A SCL_1
-    
-    Enable Control:
-        Pi 3.3V ────────────→ PCA9515A EN (auto-disable when Pi is off)
-        (VCC_1 not connected)
-
-Pi GPIO 5 → Inky Impression Top Button → GND
-Pi GPIO (SPI) → Inky Display
-
-GND ────────────────────────→ PCA9515A GND
-```
-
-## System Architecture
-
-### Component Responsibilities
-
-**Arduino (Power Manager)**
-- Controls Pi power via dual MOSFET circuit
-- Sleeps in low power mode when Pi is off
-- Monitors battery voltage
-- I2C slave device at address 0x12
-
-**Raspberry Pi (Image Processor)**
-- Fetches images from network server
-- Displays images on e-ink screen
-- Configures RTC alarms
-- Monitors battery via I2C
-- Sends shutdown commands to Arduino
-
-**DS3231 RTC (Timer)**
-- Maintains time during deep sleep
-- Triggers wake-up via alarm interrupt
+## Video and Build Image
 
-**PCA9515A I2C Buffer**
-- Isolates I2C bus between Pi and Arduino/RTC
-- Automatically disabled when Pi is off (EN tied to Pi 3.3V)
-- Reduces power consumption in deep sleep
-
-**E-ink Display**
-- No power draw when static
-- Updates only when new image is displayed
-
-### Power States
-
-1. **Active**: Pi on, displaying image (~500mA)
-2. **Waiting**: Pi on, waiting for input (<200mA)
-3. **Deep Sleep**: Pi off, Arduino sleeping (<100µA)
-4. **Wake**: Arduino wakes, powers on Pi (10 seconds)
-
-## Hardware Setup
-
-### 1. Voltage Divider for Battery Monitoring
-
-```
-Battery+ ─┬─ 20kΩ ─┬─ Arduino A0
-          │        │
-          │       10kΩ
-          │        │
-Battery- ─┴────────┴─ GND
-```
-
-This divides 7.4V battery to ~2.5V for Arduino ADC.
-
-### 2. Pi Power Control Circuit
-
-```
-Battery+ ──→ P-MOSFET Source
-            │
-            Gate ←─── N-MOSFET Drain
-            │              │
-            Drain ──→ 5V Boost Converter → Pi 5V
-                           
-Arduino D7 ──→ N-MOSFET Gate
-               │
-               Source ──→ GND
-```
-
-When Arduino D7 is HIGH:
-- N-MOSFET turns ON
-- Pulls P-MOSFET gate to ground
-- P-MOSFET turns ON
-- Power flows to Pi
-
-### 3. I2C Buffer (PCA9515A)
+- YouTube video: https://www.youtube.com/watch?v=AknCTQES6c4
 
-```
-Pi 3.3V ──┬───→ PCA9515A VCC_0
-          └───→ PCA9515A EN (auto-disable when Pi off)
-
-Side 0 (Pi):
-    Pi GPIO 2 (SDA) ────→ PCA9515A SDA_0
-    Pi GPIO 3 (SCL) ────→ PCA9515A SCL_0
-
-Side 1 (Arduino + RTC):
-    Arduino A4 (SDA) ───→ PCA9515A SDA_1
-    Arduino A5 (SCL) ───→ PCA9515A SCL_1
-    DS3231 SDA ─────────→ PCA9515A SDA_1
-    DS3231 SCL ─────────→ PCA9515A SCL_1
-
-GND ────────────────────→ PCA9515A GND
-
-Note: VCC_1 is left disconnected
-```
-
-The PCA9515A provides:
-- Buffering between Arduino/RTC and Pi I2C buses
-- Built-in pull-ups (no external resistors needed)
-- Bus isolation
-- Rise-time acceleration
-- **Automatic disable when Pi is off** - EN pin tied to Pi 3.3V means the buffer powers down completely when the Pi shuts off, eliminating any leakage current through the I2C bus
-
-### 4. Button Connections
-
-```
-3.3V ──┬─ Internal Pull-up ─── Arduino D3 ─── Button ─── GND
-       │
-       └─ Internal Pull-up ─── Pi GPIO 5 (top Inky Impression button) ─── GND
-```
-
-## Software Installation
-
-### Raspberry Pi Setup
-
-1. Flash Raspberry Pi OS Lite with SSH and WiFi enabled
-
-2. Update system:
-   ```bash
-   sudo apt update && sudo apt upgrade -y
-   ```
-
-3. Install dependencies:
-   ```bash
-   sudo apt install -y python3-pip python3-pil python3-numpy \
-                       python3-smbus python3-rpi.gpio i2c-tools \
-                       s-nail
-   
-   pip3 install inky requests gpiozero adafruit-circuitpython-ds3231 \
-                smbus2 pillow
-   ```
-
-4. Enable I2C:
-   ```bash
-   sudo raspi-config
-   # Interface Options → I2C → Enable
-   sudo reboot
-   ```
-
-5. Verify I2C devices:
-   ```bash
-   sudo i2cdetect -y 1
-   # Should show 0x12 (Arduino) and 0x68 (DS3231)
-   ```
-
-6. Copy Python script to Pi:
-   ```bash
-   mkdir -p ~/PiFrame/Python
-   # Copy imagesd.py to this directory
-   ```
-
-7. Set up auto-start:
-   ```bash
-   sudo nano /etc/rc.local
-   # Add before "exit 0":
-   sudo -u pi python3 /home/pi/PiFrame/Python/imagesd.py &
-   ```
-
-### Arduino Setup
+![PiFrame Circuit](Images/Circuit.png)
 
-1. Install Arduino IDE and LowPower library (Rocket Scream)
-
-2. Configure board:
-   - Board: Arduino Pro or Pro Mini
-   - Processor: ATmega328P (3.3V, 8MHz)
-
-3. Upload fullFrame.ino
-
-4. Verify I2C address is 0x12
-
-## Configuration
+## What This Project Does
 
-### Python Configuration
-
-Edit `Python/imagesd.py`:
+PiFrame updates a 4:3 image on an e-ink screen, then shuts the Raspberry Pi fully off to save power. An Arduino Pro Mini stays alive, watches a button/RTC interrupt, and switches Pi power back on when needed.
 
-```python
-@dataclass
-class Config:
-    IMAGE_URL: str = "http://192.168.1.4/py/pics3.cgi"  # Your image server
-    BUTTON_PIN: int = 5                                   # Pi button GPIO
-    WAIT_SECONDS: int = 45                                # Wait before shutdown
-    SLEEP_MINUTES: int = 5                                # Sleep duration
-    LOW_VOLTAGE_THRESHOLD: float = 6.75                   # Low battery warning
-    SATURATION: float = 0.5                               # E-ink color saturation
-```
+High-level behavior:
 
-### Arduino Configuration
+1. Arduino powers Pi on.
+2. Pi runs [Python/imagesd.py](Python/imagesd.py), requests one image from a local CGI endpoint, and renders it to the e-ink display.
+3. Pi waits for user input for 45 seconds.
+4. If no cancel input is received, Pi sets an RTC alarm and requests shutdown.
+5. Arduino receives shutdown request over I2C, waits 10 seconds, then cuts Pi power.
+6. RTC alarm (or manual button press) wakes the system for the next update.
 
-Edit `fullFrame/fullFrame.ino`:
+## Hardware Architecture
 
-```cpp
-namespace Config {
-    constexpr uint8_t I2C_ADDRESS = 0x12;               // I2C slave address
-    constexpr uint8_t DEFAULT_SHUTDOWN_DELAY_SECS = 10; // Shutdown delay
-    constexpr float VOLTAGE_DIVIDER_R1 = 20000.0f;      // Top resistor (Ω)
-    constexpr float VOLTAGE_DIVIDER_R2 = 10000.0f;      // Bottom resistor (Ω)
-}
-```
+### Core parts
 
-### Image Server
+- Raspberry Pi (the transcript notes moving away from original Pi Zero due to boot time; Pi Zero 2 class is more practical).
+- Arduino Pro Mini (3.3V variant expected by current voltage logic).
+- Pimoroni Inky color display (transcript references 13.3-inch color e-ink panel).
+- DS3231 RTC module (alarm interrupt wake).
+- LiPo battery pack powering the whole frame.
+- DC-DC converter to Pi 5V rail.
+- High-side switching stage using one N-channel and one P-channel MOSFET.
+- Voltage divider into Arduino A0 for battery telemetry.
+- Button on frame side (plus optional duplicate button in parallel).
+- I2C buffer/isolator (mentioned in transcript as part of bus-stability work).
 
-The Pi fetches images from a web server. The server should accept GET requests with a voltage parameter and return an image:
+### Signals used by current firmware
 
-```
-GET http://your-server/pics3.cgi?v=7.85
-```
+From [fullFrame/fullFrame.ino](fullFrame/fullFrame.ino):
 
-Example PHP implementation:
-```php
-<?php
-$voltage = $_GET['v'] ?? '0.00';
-$images = glob('images/*.jpg');
-$image = $images[array_rand($images)];
+- `D7`: Pi power switch control.
+- `D3`: user button interrupt.
+- `D2`: RTC interrupt input.
+- `A0`: battery voltage ADC.
+- I2C slave address: `0x12`.
 
-file_put_contents('voltage.log', date('Y-m-d H:i:s') . " - $voltage V\n", FILE_APPEND);
+From [Python/imagesd.py](Python/imagesd.py):
 
-header('Content-Type: image/jpeg');
-readfile($image);
-?>
-```
+- Pi local button: GPIO 5 via `gpiozero.Button`.
+- I2C bus `1` for Arduino (`0x12`) and DS3231 (`0x68`).
 
-## Operation
+## Software Components
 
-### Normal Operation Cycle
+### Main runtime files
 
-1. RTC alarm wakes Arduino
-2. Arduino powers on Pi
-3. Pi boots (2:30 minutes)
-4. Pi fetches image from server
-5. Image displayed on e-ink screen
-6. System waits 45 seconds for button press
-7. If no button pressed, Pi commands Arduino to shutdown
-8. Arduino cuts Pi power, sets RTC alarm, enters deep sleep
-9. PCA9515A buffer automatically disables (EN goes low with Pi 3.3V)
-10. Cycle repeats after sleep period
+- [fullFrame/fullFrame.ino](fullFrame/fullFrame.ino): production Arduino firmware (power switching, sleep, I2C slave protocol, button/RTC interrupts).
+- [Python/imagesd.py](Python/imagesd.py): production Pi app (fetch image, display, low-battery warning, RTC alarm setup, controlled shutdown).
+- [Python/pics3.cgi](Python/pics3.cgi): image server script (random selection, avoids immediate repeats, portrait handling, blur-fill to 4:3, JPEG response).
+- [Python/piframe.service](Python/piframe.service): systemd unit that waits for network readiness, then runs git pull before launching the Python app.
 
-### Manual Controls
+### Supporting/legacy files
 
-**Arduino Button (D3)**:
-- When Pi is off: Powers on Pi
-- When Pi is on: Restarts script (fetch new image)
+- [SleepTimer/SleepTimer.ino](SleepTimer/SleepTimer.ino): RTC sleep/wake experiment sketch.
+- [Voltage/Voltage.ino](Voltage/Voltage.ino): battery measurement test sketch.
 
-**Inky Impression Top Button (GPIO 5)**:
-- During wait period: Cancels shutdown (keeps Pi running)
+## I2C Protocol (Pi master -> Arduino slave `0x12`)
 
-### LED Indicator
+Defined by [fullFrame/fullFrame.ino](fullFrame/fullFrame.ino) and consumed in [Python/imagesd.py](Python/imagesd.py):
 
-Arduino built-in LED:
-- Off: Pi powered off (deep sleep)
-- On (solid): Pi powered on
-- Blinking: Shutdown pending (countdown)
+- `0x01` read: button event (1 once, then cleared).
+- `0x02` read: battery voltage encoded as one byte where `volts = raw / 25.0`.
+- `0x10` write: Pi is shutting down (Arduino enters delayed power-off state).
+- `0x11` write: cancel shutdown (implemented in Arduino).
 
-## I2C Communication Protocol
+Arduino LED states:
 
-Arduino is I2C slave at address 0x12.
+- Off: Pi power off.
+- Solid on: Pi power on.
+- 2 Hz blink: shutdown pending.
 
-### Commands
+## Pi App Behavior
 
-| Command | Value | Type | Description |
-|---------|-------|------|-------------|
-| READ_BUTTON | 0x01 | Read | Returns 1 if button pressed, 0 otherwise |
-| READ_VOLTAGE | 0x02 | Read | Returns voltage × 25 (0-255) |
-| CANCEL_SHUTDOWN | 0x00 | Write | Cancels pending shutdown |
-| SHUTDOWN | 0x03-0xFF | Write | Shutdown with N second delay |
+Current defaults in [Python/imagesd.py](Python/imagesd.py):
 
-### Python Examples
+- Image endpoint: `http://192.168.1.4/py/pics3.cgi`.
+- Wait before shutdown: `45` seconds.
+- Sleep interval before next RTC wake: `24 * 60` minutes (24 hours).
+- Low battery threshold: `6.75V`.
+- Display saturation: `0.5`.
 
-```python
-i2c = I2CController()
+Flow:
 
-# Read voltage
-voltage = i2c.read_voltage()  # Returns float, e.g., 7.85
+1. Read voltage from Arduino over I2C.
+2. Fetch one image from CGI endpoint (`?v=<voltage>` appended).
+3. If low voltage, send local email via `s-nail` and overlay warning text on the image.
+4. Display image on Inky panel.
+5. During wait window:
+   - Pi GPIO button cancels shutdown.
+   - Arduino button triggers immediate script restart (new image).
+6. On timeout:
+   - Disable DS3231 32kHz output bit.
+   - Program DS3231 alarm.
+   - Send shutdown command to Arduino.
+   - Run `sudo shutdown -h now`.
 
-# Check button
-if i2c.is_button_pressed():
-    print("Button pressed")
+## Image Server Behavior
 
-# Shutdown in 15 seconds
-i2c.shutdown(delay_seconds=15)
+The CGI script [Python/pics3.cgi](Python/pics3.cgi):
 
-# Cancel shutdown
-i2c.cancel_shutdown()
-```
+- Reads source images from `/srv/http/192.168.1.4/resized/`.
+- Picks a random image but avoids repeating the most recently logged filename.
+- Logs timestamp, filename, and incoming voltage query value to `log.log`.
+- Processing:
+  - Portrait image: center-crop to square first.
+  - If narrower than 4:3: generates blurred side fill.
+  - Else: center-crops to exact 4:3.
+  - Resizes output to `1600x1200` JPEG.
 
-## Power Management
+## Setup Guide
 
-### Current Consumption
+### 1) Arduino firmware
 
-| State | Current | Duration |
-|-------|---------|----------|
-| Deep Sleep | ~0.1mA | 5 min |
-| Boot | ~510mA | 30s |
-| Display Update | ~510mA | 5s |
-| Waiting | ~210mA | 45s |
-| Shutdown | ~210mA | 10s |
+1. Open [fullFrame/fullFrame.ino](fullFrame/fullFrame.ino) in Arduino IDE.
+2. Board settings from [.vscode/arduino.json](.vscode/arduino.json):
+   - Board: `arduino:avr:pro`
+   - CPU: `16MHzatmega328`
+3. Install required library:
+   - `LowPower` (Rocket Scream variant).
+4. Upload firmware to Pro Mini using your USB-serial programmer.
 
-### Battery Life
+Note: the transcript indicates power-saving hardware mods (removing board LEDs/regulator) were used; those are optional but materially affect standby current.
 
-With 2S LiPo (7.4V, 2000mAh):
-- Deep sleep: 24 hours @ 0.08mA ~ 2 mAh
-- Wake cycle: 3 min @ 200mA avg = 10 mAh
-- Total per day: ~12 mAh
-- Battery life: ~100 days
+### 2) Raspberry Pi dependencies
 
-Adjust `SLEEP_MINUTES` to extend battery life.
-
-### Low Voltage Protection
-
-When voltage drops below threshold (default 6.75V):
-- Warning overlay added to image
-- Email sent to local mailbox
-- Voltage logged to server
-
-## Troubleshooting
-
-### Pi Won't Boot
-
-Check:
-- 5V regulator output voltage
-- MOSFET wiring (D7 HIGH should turn on Pi)
-- Battery voltage
-- SD card is inserted properly
-
-### I2C Communication Fails
+Install system and Python packages needed by [Python/imagesd.py](Python/imagesd.py):
 
 ```bash
-sudo i2cdetect -y 1
-# Should show 0x12 (Arduino) and 0x68 (RTC)
+sudo apt update
+sudo apt install -y python3 python3-pip python3-pil python3-smbus i2c-tools s-nail
+pip3 install requests pillow gpiozero smbus2 adafruit-circuitpython-ds3231 inky
 ```
 
-Check:
-- PCA9515A power (VCC_0 at 3.3V from Pi)
-- EN pin has voltage when Pi is on
-- SDA/SCL connections on both sides of buffer
-- Arduino is powered
-- I2C address matches
+Enable I2C in `raspi-config`, then reboot.
 
-### Display Not Updating
+### 3) Deploy Pi runtime
 
-Check:
-- SPI connections to display
-- Display power (3.3V)
-- Python logs for errors
-
-### Arduino Not Waking
-
-Check:
-- RTC alarm is set
-- RTC battery
-- INT pin connection (D2)
-- Test with manual button
-
-### Battery Drains Quickly
-
-Check:
-- Pi is actually shutting down
-- Arduino enters deep sleep
-- Measure current draw
-- Increase `SLEEP_MINUTES`
-- Verify PCA9515A is disabling (EN should go to 0V when Pi is off)
-
-### Email Notifications Not Working
+1. Copy repository to Pi (expected by service as `/home/jamie/PiFrame`).
+2. Ensure [Python/imagesd.py](Python/imagesd.py) is executable.
+3. Install service file [Python/piframe.service](Python/piframe.service) to `/etc/systemd/system/piframe.service`.
+4. Edit service paths/user for your machine.
+5. Enable and start:
 
 ```bash
-# Test mail
-echo "Test" | s-nail -s "Test" $USER
-
-# Check mail
-mail
+sudo systemctl daemon-reload
+sudo systemctl enable piframe.service
+sudo systemctl start piframe.service
 ```
 
-### I2C Buffer Issues
+Service behavior in this repo:
 
-If devices aren't visible on `i2cdetect`:
-- Verify PCA9515A VCC_0 has 3.3V from Pi
-- Check EN pin is high when Pi is running
-- Verify VCC_1 is disconnected (not used)
-- Check all ground connections
-- Ensure buffer is oriented correctly (Pi on side 0, Arduino/RTC on side 1)
-- Try connecting devices directly (temporarily) to isolate issue
+- It blocks startup until internet is reachable (ping checks in `ExecStartPre`).
+- On each run, it changes into the repo, runs `git pull`, activates the virtualenv, then runs [Python/imagesd.py](Python/imagesd.py).
+- Practical workflow: you can commit and push updates while the frame is off; at the next wake/update cycle, the service pulls latest changes automatically. You do not need to modify files with the frame powered on.
 
-Note: The buffer will only work when the Pi is powered on, as EN is tied to Pi 3.3V.
+### 4) Configure image endpoint
 
-## License
+If using the included CGI script:
 
-[Your license here]
+1. Deploy [Python/pics3.cgi](Python/pics3.cgi) to your web server CGI path.
+2. Update `IMAGE_FOLDER` to your photo directory.
+3. Ensure script has execute permission and PIL/Pillow available on host.
+4. Update `Config.IMAGE_URL` in [Python/imagesd.py](Python/imagesd.py).
 
-## Credits
+## Known Issues and Practical Notes
 
-- Inky library: Pimoroni
-- LowPower library: Rocket Scream
-- DS3231 library: Adafruit
+- I2C lockups can still occur (explicitly described in the transcript); a hard power rail break/reset jumper is useful for recovery.
+- E-ink color quality is image-dependent; photos with strong contrast and limited color palettes look best.
+- Acrylic/gloss front layers can reduce apparent saturation; transcript notes improved perceived quality after removing acrylic.
+- Boot time significantly impacts user experience and total energy per update cycle; faster Pi models improve both.
+
+## Safety and Power Notes
+
+- Battery chemistry and charge/discharge safety are your responsibility.
+- Validate converter thermal behavior and inrush margins during e-ink refresh.
+- The project measures voltage but does not implement a full BMS in software.
+
+## Verification Checklist
+
+After wiring and flashing:
+
+1. Arduino LED on solid after power-up.
+2. `i2cdetect -y 1` on Pi shows `0x12` and `0x68` when powered.
+3. Running [Python/imagesd.py](Python/imagesd.py) updates display and logs a voltage-tagged request at CGI host.
+4. After timeout, Pi halts and Arduino cuts power after delay.
+5. RTC alarm or side button wakes and repeats cycle.
