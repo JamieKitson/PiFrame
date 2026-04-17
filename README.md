@@ -4,6 +4,21 @@ Battery-powered color e-ink photo frame driven by a Raspberry Pi and an Arduino 
 
 Warning, below has been written by an LLM only lightly edited by me and may not be 100% correct.
 
+## Table of Contents
+
+- [Video and Build Image](#video-and-build-image)
+- [What This Project Does](#what-this-project-does)
+- [Hardware Architecture](#hardware-architecture)
+- [Component List and Purchase Links](#component-list-and-purchase-links)
+- [Software Components](#software-components)
+- [I2C Protocol (Pi master -> Arduino slave `0x12`)](#i2c-protocol-pi-master----arduino-slave-0x12)
+- [Pi App Behavior](#pi-app-behavior)
+- [Image Server Behavior](#image-server-behavior)
+- [Setup Guide](#setup-guide)
+- [Known Issues and Practical Notes](#known-issues-and-practical-notes)
+- [Safety and Power Notes](#safety-and-power-notes)
+- [Verification Checklist](#verification-checklist)
+
 ## Video and Build Image
 
 - YouTube video: https://www.youtube.com/watch?v=AknCTQES6c4
