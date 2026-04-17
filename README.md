@@ -106,8 +106,9 @@ Where possible I've linked to the actual items I bought, but Pis seem to be expe
 ### Optional Battery Meters
 
 - Mini LED Battery Meter: [Buy link](https://www.ebay.co.uk/itm/177016305844?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
-  - Note: had real problems creating a voltage divider for this; likely better to use one matched to your battery (for example, 2-cell LiPo).
-- LED Battery Meter (no direct experience, but likely a better fit): [Buy link](https://www.ebay.co.uk/itm/336375640422?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xDP6LchFftfnhtO%2F5xMTtVDCR1nRD2W4w5Aen53KkhmaIAJsKhg3AFE1nceorJYLRMCG1CmdgWNAOiSjydbOoeCpUrcePngKlE57GWJuPNUWcGy%2FPnJLw9Bl3PllEcR835XvERjDuTKdBfzhqFQ%2B8xRfbndd7fRTz7yfrIjYpcNLfCzOxLIok%2BW19GzQn5laPw%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - I had real problems creating a voltage divider for this; likely better to use one matched to your battery (for example, 2-cell LiPo).
+- LED 2S Battery Meter: [Buy link](https://www.ebay.co.uk/itm/336375640422?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xDP6LchFftfnhtO%2F5xMTtVDCR1nRD2W4w5Aen53KkhmaIAJsKhg3AFE1nceorJYLRMCG1CmdgWNAOiSjydbOoeCpUrcePngKlE57GWJuPNUWcGy%2FPnJLw9Bl3PllEcR835XvERjDuTKdBfzhqFQ%2B8xRfbndd7fRTz7yfrIjYpcNLfCzOxLIok%2BW19GzQn5laPw%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - I have no direct experienceof this, but it's likely a better fit.
 
 ## Software Components
 
