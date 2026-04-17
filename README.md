@@ -53,6 +53,62 @@ From [Python/imagesd.py](Python/imagesd.py):
 - Pi local button: GPIO 5 via `gpiozero.Button`.
 - I2C bus `1` for Arduino (`0x12`) and DS3231 (`0x68`).
 
+## Component List and Purchase Links
+
+Where possible I've linked to the actual items I bought, but Pis seem to be expensive/hard to come by at the moment.
+
+### Core Electronics
+
+- Inky Impression 13" Colour e-Ink Screen: [Buy link](https://shop.pimoroni.com/products/inky-impression?variant=55186435277179)
+- Raspberry Pi Zero 2 W: [Buy link](https://amzn.to/4vAQTbX)
+- SanDisk Micro SD Card: [Buy link](https://www.ebay.co.uk/itm/286984118600?var=589027763072&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- Arduino Pro Mini 3.3V: [Buy link](https://www.ebay.co.uk/itm/305210446733?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xC4nr3QEtbYIPgSo109z3%2F99pj%2F78aagCKRMMDPo47ZgEDSY%2B9l6Myd%2BPsWHjZGPAq7Iu6FWSLnkMMgMS%2B5Rv%2BcjZxPDu5CrwdKwdmrCoYc6iskB3QD%2BlzFHN0LnBJtQLctfqp5VjuYQen2Xhh4plgIRprMRl%2Bz52B1KMeDSCfuauFmnXumVCvIy7GkCO%2Bp5sc%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- USB Programming Board FT232RL FTDI Module 5V/3.3V: [Buy link](https://www.ebay.co.uk/itm/127377038303?var=428474503338&amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xBeSO3v0zUO%2BkLxqV0lq9NPYpgPaomHOi167GZbA6h3SGMtwCM6Emi2WzsqI2%2BCKljP5%2F3OVNVMRJibYeaWQd2af5qs9iTyPsyKcGCBPWvaf8L%2BuUKsm%2FwsENku5w11dbEUp%2Fq3m%2BljCKpyuzrMRJ8ThV0trX1fTHbDHikX4kxdPCr%2FfYMPw2%2B2lGeUdlXpCHU%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- RTC DS3231 Real Time Clock: [Buy link](https://www.ebay.co.uk/itm/155491320233?var=455730810590&amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xDCbSprMC6s1bo3FYyfD0UZR0BDyHkcoCx8oRQfG0LA6YavVKyJyndnl3l%2F7IfuT%2FKf3mQMgt75M0F20lJvE2rJiGv76afqXj%2BsAOc%2F4Wc68lXj2y94BXnM%2Bi8a%2B1LQEdQX7N1tl7wlAeHdg0kg7giPhWAN3wvuBzuHXcWlg%2BpHIk%2FMRCsBZbJpk10w%2FjBbX2M%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - I forgot to mention that I removed the battery cell and contacts, and replaced the right-angle pins with straight.
+
+### Power and Switching
+
+- IRF9540N P-Channel MOSFET: [Buy link](https://www.ebay.co.uk/itm/155878954226?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xCep1Enb%2B0LVTzZ1DnGT79usCtSbpo1aUQ4M1lIIrjJQbsIGD7h9EohXPRyQW219kLfZM9gSF5BQNnlct6YBC%2FQHBUUtaV9bV1mMzhcLyqkYeFlG%2FK9PjTBiO5N8vG4SQWuKpgm%2FU9s3RCj4kRkOKEFu7IGL0TSDAeEWzQKsbdSfHCyeKccbBvG%2FomOF4o3dIw%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- FQP30N06L N-Channel MOSFET: [Buy link](https://www.ebay.co.uk/itm/365657913471?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xCHPlOEgLx0V5dto7WHQ4Z2S%2FsVeTNSD%2FaSBYLbKvH30K0rK03Vcrj0qk53XBtrHzZqjB3OkDKc%2B8VZCBro6CLOfCJF0%2BzzJgAPjoJ8K9vIuZAVTzbp2xAgaVkIJ4EZyZhQKCBH8AErrf6WFDRcuppp47LPpnfnjthuxXgITR3fEnspouW%2FKXQLC9veFnHWwvA%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- Step Down Voltage Regulator 5v~24v to 1.8v/3.3v/12v 3A: [Buy link](https://www.ebay.co.uk/itm/335700668123?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - Note that adjustment is very sensitive and can be jogged; ended up soldering to fixed 5V rather than manually setting 5.2V.
+- MCP1702-3302E/TO IC REGULATOR LINEAR 3.3V 250MA TO92-3: [Buy link](https://www.ebay.co.uk/itm/156363523627?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - A good option for higher voltages.
+- MCP1700-3302E LDO Voltage Regulator 3.3V 250mA TO-92: [Buy link](https://www.ebay.co.uk/itm/234899648343?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - Another option for lower voltages, with slightly lower quiescent current.
+- MT3608 DC-DC Voltage Step-Up Adjustable Converter Module 1A: [Buy link](https://www.ebay.co.uk/itm/174123815317?var=473007178646&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - This was my original failed step-up option.
+
+### Interconnects, Controls, and General Parts
+
+- Pack of resistors: [Buy link](https://www.ebay.co.uk/itm/235925598928?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- Solder: [Buy link](https://www.ebay.co.uk/itm/363938676112?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- Single Row Male Breakable Pin Header Connector Strip: [Buy link](https://www.ebay.co.uk/itm/203585637263?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xDCRthPzNSBgSiNEhjaSJAQRhHUPV%2By7nfXfxB4gbhkAZTc9pU%2BQOZjGvQ%2FzpKYra3bjP9rMuGjSd6MAl%2ByqhrAi7nbyqBtb2AIqCRJTT1RgS%2FMr4jSn0CAxuf%2FbcdhF--M%2FRGFFZ2WqW%2Bp895gt1bMS37COx8Qn1THZ%2FlCsuwlNz4GdrjWI%2FxAjV8GkPIOTfo%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - Very handy for various uses.
+- On-On Mini PCB Slide Switch SPDT 5A: [Buy link](https://www.ebay.co.uk/itm/265245651666?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xCaz85n%2FaMX3F4P63CyuQOG9xXAGG%2FFxtXiB0tEXhK0Mcg%2BQi%2FZ0RFaOPRHr1EKSUG2cWFcFwEYEsOyQ34ZarbVufYTUYW455VCjKHAR3XqGmLQazy3t%2BqkNHeKPXP5a0PeodpMBA8QBrBJKHHJlxGow%2Be6Pa%2FBIU%2FZQoqpiz%2FROVjvwWFnndkAhrTyz%2BY%2BZA0%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - A little too big for normal PCB/breadboard, and 5A is likely overkill.
+- Nive Red Buttons: [Buy link](https://www.ebay.co.uk/itm/389373230382?var=656697025919&amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xC8mc5GQBEv5gOB2AAOv6oAF9Gntwk4cyBeMKzea%2BhyL7L6fDxnIs0f8uBRJOLDXF1u1XNo4BECa4f4evzoG%2BRxFinNJ7K%2B9jH4oUR4at90mhw1lEJiErKOaNILjvUZwMvmvfi0G1ZrMKQTk--q7VrFjfhvyi%2FbFSPSe3G2MTF2Cvi3KBl6SHhkH6qe%2BIxUjus%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - These took a long time to ship (from China).
+- USB Type A Right Angle Socket: [Buy link](https://www.ebay.co.uk/itm/255670818538?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xBXo8ag%2BywvzVt6qBu0xyGwm35V8WS4DfRbeS%2B5W8KtB5Vitw5CWHtI6xnyk1MxUzUF%2BisPEyOlxZwNxxwO49mzoErVW1O7YCWgr%2B27K%2FB2mhRitawscAR5xvIieFyhkwR0wlPnIVfxyB16pXI7TbmGDqz7tNP%2FECRLf3hkDNWVXPBW6Uc9PWkwahnQ2PZZF3Y%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- Solderless Prototype Breadboard: [Buy link](https://amzn.to/4myC6L3)
+- ElectroCookie Solderable Breadboard: [Buy link](https://amzn.to/4cBqLoZ)
+- Colored 9 Meter Spools 22 Gauge Jumper Wire: [Buy link](https://amzn.to/4cwGjdt)
+- Balsa Wood Bundle: [Buy link](https://www.ebay.co.uk/itm/277512476279?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - For mounting
+- Ikea picture frame: [Buy link](https://www.ikea.com/gb/en/cat/roedalm-series-700545/)
+
+### I2C Bus Options
+
+- PCA9515A I2C Buffer / Repeater: [Buy link](https://www.ebay.co.uk/itm/317770823716?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+- Texas 74HC4066 Quad SPST Analog Switch SOIC-14 (alternative option): [Buy link](https://www.ebay.co.uk/itm/185962448952?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+
+### Optional Battery Meters
+
+- Mini LED Battery Meter: [Buy link](https://www.ebay.co.uk/itm/177016305844?mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+  - Note: had real problems creating a voltage divider for this; likely better to use one matched to your battery (for example, 2-cell LiPo).
+- LED Battery Meter (no direct experience, but likely a better fit): [Buy link](https://www.ebay.co.uk/itm/336375640422?amdata=enc%3AAQALAAAAoGfYFPkwiKCW4ZNSs2u11xDP6LchFftfnhtO%2F5xMTtVDCR1nRD2W4w5Aen53KkhmaIAJsKhg3AFE1nceorJYLRMCG1CmdgWNAOiSjydbOoeCpUrcePngKlE57GWJuPNUWcGy%2FPnJLw9Bl3PllEcR835XvERjDuTKdBfzhqFQ%2B8xRfbndd7fRTz7yfrIjYpcNLfCzOxLIok%2BW19GzQn5laPw%3D&mkcid=1&mkrid=710-53481-19255-0&siteid=3&campid=5339149883&customid=&toolid=10001&mkevt=1)
+
 ## Software Components
 
 ### Main runtime files
