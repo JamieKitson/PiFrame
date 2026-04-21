@@ -25,7 +25,7 @@ Warning, below has been written by an LLM only lightly edited by me and may not 
 
 ![PiFrame Circuit Photo](Images/Circuit/CircuitPhoto.png)
 
-![PiFrame Circuit Sketch](Images/Circuit/CircuitSketch.png)
+![PiFrame Circuit Sketch](Images/Circuit/CircuitSketch.svg)
 
 ## What This Project Does
 
