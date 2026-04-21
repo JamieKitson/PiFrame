@@ -23,7 +23,9 @@ Warning, below has been written by an LLM only lightly edited by me and may not 
 
 - YouTube video: https://www.youtube.com/watch?v=AknCTQES6c4
 
-![PiFrame Circuit](Images/CircuitPhoto.png)
+![PiFrame Circuit Photo](Images/Circuit/CircuitPhoto.png)
+
+![PiFrame Circuit Sketch](Images/Circuit/CircuitSketch.png)
 
 ## What This Project Does
 
