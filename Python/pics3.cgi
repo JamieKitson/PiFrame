@@ -18,28 +18,57 @@ def crop(img, target_w, target_h):
 	return img.crop((left, top, right, bottom))
 
 
-def get_last_logged_image(log_path, image_names):
+def get_unlogged_images(log_path, image_names):
+    available = set(image_names)
+
+    if not available:
+        return []
+
     if not os.path.exists(log_path):
-        return None
+        return image_names.copy()
 
     try:
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as log_file:
-            last_line = ""
             for line in log_file:
-                if line.strip():
-                    last_line = line.strip()
+                if not available:
+                    break
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                # Expected format: DATE TIME FILE NAME WITH SPACES VOLTAGE
+                # Split from the right to peel off voltage, then isolate filename.
+                left_and_name = stripped.rsplit(" ", 1)
+                if len(left_and_name) != 2:
+                    continue
+                date_time_and_name = left_and_name[0].split(" ", 2)
+                if len(date_time_and_name) != 3:
+                    continue
+                image_name = date_time_and_name[2]
+                if image_name in available:
+                    available.remove(image_name)
     except OSError:
-        return None
+        return [img for img in image_names if img in available]
 
-    if not last_line:
-        return None
+    # Preserve original directory listing order for reproducibility.
+    return [img for img in image_names if img in available]
 
-    haystack = f" {last_line} "
-    for image_name in sorted(image_names, key=len, reverse=True):
-        if f" {image_name} " in haystack:
-            return image_name
 
-    return None
+def rollover_log(log_path):
+    if not os.path.exists(log_path):
+        return
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_path = f"{log_path}.{timestamp}"
+
+    try:
+        os.replace(log_path, archive_path)
+    except OSError:
+        # Fallback to truncating if archiving fails.
+        try:
+            with open(log_path, 'w', encoding='utf-8'):
+                pass
+        except OSError:
+            pass
 
 
 try:
@@ -51,11 +80,13 @@ try:
         print("No images found")
         sys.exit(0)
 
-    last_image = get_last_logged_image(LOG_FILE, images)
-    if last_image and len(images) > 1:
-        images.remove(last_image)
+    available_images = get_unlogged_images(LOG_FILE, images)
 
-    filename = random.choice(images)
+    if not available_images:
+        rollover_log(LOG_FILE)
+        available_images = images.copy()
+
+    filename = random.choice(available_images)
 
     v = cgi.FieldStorage().getvalue('v')
     
