@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 #df = pd.read_csv("log.log", sep=" ", header=None,
 #                 names=["date","time","file","voltage"])
 
-
 rows = []
 
 with open("log.log") as f:
@@ -55,4 +54,4 @@ daily["smooth"] = daily["voltage"].rolling(3).mean()
 plt.xticks(rotation=45)
 plt.tight_layout()
 #plt.show()
-plt.savefig("voltage.png", dpi=150)
+plt.savefig("voltagePlot.png", dpi=150)
