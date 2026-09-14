@@ -64,25 +64,25 @@ class I2CController:
     def _recover_bus(self):
         """Bit-bang SCL to force a slave that's holding SDA low to release the bus,
         then issue a STOP condition, per the I2C spec bus-recovery procedure.
-        Uses raspi-gpio so it works even while the kernel i2c-bcm2835 driver owns the pins.
+        Uses pinctrl so it works even while the kernel i2c-bcm2835 driver owns the pins.
         """
         try:
-            subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "op", "dh"], check=True)
+            subprocess.run(["pinctrl", "set", str(self.SCL_GPIO), "op", "dh"], check=True)
             for _ in range(9):
-                subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "dl"], check=True)
+                subprocess.run(["pinctrl", "set", str(self.SCL_GPIO), "dl"], check=True)
                 time.sleep(0.00001)
-                subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "dh"], check=True)
+                subprocess.run(["pinctrl", "set", str(self.SCL_GPIO), "dh"], check=True)
                 time.sleep(0.00001)
             # Generate a STOP: SDA low, then SDA high while SCL is high
-            subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "op", "dl"], check=True)
+            subprocess.run(["pinctrl", "set", str(self.SDA_GPIO), "op", "dl"], check=True)
             time.sleep(0.00001)
-            subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "dh"], check=True)
+            subprocess.run(["pinctrl", "set", str(self.SDA_GPIO), "dh"], check=True)
         except Exception as e:
             logging.error(f"I2C bus recovery failed: {e}")
         finally:
             # Hand the pins back to the I2C peripheral (ALT0 function)
-            subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "a0"], check=True)
-            subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "a0"], check=True)
+            subprocess.run(["pinctrl", "set", str(self.SDA_GPIO), "a0"], check=True)
+            subprocess.run(["pinctrl", "set", str(self.SCL_GPIO), "a0"], check=True)
 
     def _send_command(self, cmd: int) -> int:
         """Send I2C command and read single byte response, recovering the bus on failure"""
