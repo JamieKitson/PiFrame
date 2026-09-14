@@ -59,7 +59,7 @@ void turnPiOff() {
 
 // ------------------------- I2C -------------------------
 #define I2C_ADDRESS 0x12
-#define SHUTDOWN_DELAY_SECS 10
+#define SHUTDOWN_DELAY_SECS 15
 volatile uint8_t currentRegister = 0x00;
 
 void onI2CReceive(int numBytes) {
@@ -205,8 +205,12 @@ void loop() {
 
     // --- Low power mode ---
     if (piState == PI_OFF) {
-        // If Pi is off, enter low power mode
+        // If Pi is off, enter deep sleep and temporarily disable watchdog.
+        // Otherwise WDT can reset the MCU while sleeping, causing an unintended reboot/power-cycle loop.
+        wdt_disable();
         LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
+        wdt_enable(WDTO_2S);
+        wdt_reset();
     }    
 
     // --- Handle button press ---
