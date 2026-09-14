@@ -38,22 +38,53 @@ class I2CCommand(IntEnum):
 
 class I2CController:
     """Handles I2C communication with Arduino"""
-    
+
+    # BCM pin numbers used by the Pi's hardware I2C1 bus (i2c-1 / /dev/i2c-1)
+    SDA_GPIO = 2
+    SCL_GPIO = 3
+    MAX_RETRIES = 3
+
     def __init__(self, address: int = Config.ARDUINO_I2C_ADDRESS):
         self.address = address
-    
-    def _send_command(self, cmd: int) -> int:
-        """Send I2C command and read single byte response"""
+
+    def _recover_bus(self):
+        """Bit-bang SCL to force a slave that's holding SDA low to release the bus,
+        then issue a STOP condition, per the I2C spec bus-recovery procedure.
+        Uses raspi-gpio so it works even while the kernel i2c-bcm2835 driver owns the pins.
+        """
         try:
-            with SMBus(1) as bus:
-                bus.write_byte(self.address, cmd)
-                msg = i2c_msg.read(self.address, 1)
-                bus.i2c_rdwr(msg)
-                data = list(msg)
-                return data[0]
+            subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "op", "dh"], check=True)
+            for _ in range(9):
+                subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "dl"], check=True)
+                time.sleep(0.00001)
+                subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "dh"], check=True)
+                time.sleep(0.00001)
+            # Generate a STOP: SDA low, then SDA high while SCL is high
+            subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "op", "dl"], check=True)
+            time.sleep(0.00001)
+            subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "dh"], check=True)
         except Exception as e:
-            print(f"I2C communication error: {e}")
-            return -1
+            print(f"I2C bus recovery failed: {e}")
+        finally:
+            # Hand the pins back to the I2C peripheral (ALT0 function)
+            subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "a0"], check=True)
+            subprocess.run(["raspi-gpio", "set", str(self.SCL_GPIO), "a0"], check=True)
+
+    def _send_command(self, cmd: int) -> int:
+        """Send I2C command and read single byte response, recovering the bus on failure"""
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                with SMBus(1) as bus:
+                    bus.write_byte(self.address, cmd)
+                    msg = i2c_msg.read(self.address, 1)
+                    bus.i2c_rdwr(msg)
+                    data = list(msg)
+                    return data[0]
+            except Exception as e:
+                print(f"I2C communication error (attempt {attempt}/{self.MAX_RETRIES}): {e}")
+                self._recover_bus()
+                time.sleep(0.05)
+        return -1
     
     def read_voltage(self) -> float:
         """Read battery voltage from Arduino"""

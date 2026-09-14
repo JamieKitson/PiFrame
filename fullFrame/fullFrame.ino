@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <LowPower.h>
+#include <avr/wdt.h>
 
 // ------------------------- Pin definitions -------------------------
 #define PIN_PI_POWER      7
@@ -12,6 +13,7 @@ volatile bool buttonIRQ = false;
 volatile bool rtcWake = false;
 
 uint32_t shutdownDeadline = 0; // millis() timestamp
+uint32_t piOnDeadline = 0; // millis() timestamp; failsafe if I2C shutdown handshake never arrives
 volatile bool buttonEventToSend = false;
 
 enum PiPowerState {
@@ -42,9 +44,12 @@ void rtcISR() {
 }
 
 // ------------------------- Pi control -------------------------
+#define MAX_PI_ON_MINUTES 5
+
 void turnPiOn() {
     digitalWrite(PIN_PI_POWER, HIGH);
     piState = PI_ON;
+    piOnDeadline = millis() + MAX_PI_ON_MINUTES * 60UL * 1000UL;
 }
 
 void turnPiOff() {
@@ -166,6 +171,11 @@ void disable32K() {
 // ------------------------- Setup -------------------------
 void setup() {
 
+    // Clear the "reset by watchdog" flag and stop the WDT first thing, per AVR errata,
+    // so a watchdog-triggered reset doesn't get stuck in a boot loop.
+    MCUSR &= ~(1 << WDRF);
+    wdt_disable();
+
     pinMode(PIN_PI_POWER, OUTPUT);
     pinMode(PIN_BUTTON, INPUT_PULLUP);
     pinMode(PIN_RTC_INT, INPUT_PULLUP);
@@ -181,10 +191,15 @@ void setup() {
 
     buttonIRQ = false;
 
+    // If the loop or an I2C callback ever hangs (e.g. bus wedged mid-transaction),
+    // this forces an MCU reset, which re-inits Wire and releases SDA/SCL.
+    wdt_enable(WDTO_2S);
 }
 
 // ------------------------- Main loop -------------------------
 void loop() {
+
+    wdt_reset();
 
     updateLed();
 
@@ -209,6 +224,11 @@ void loop() {
     // --- Handle Pi shutdown request ---
     if (piState == PI_SHUTDOWN_PENDING && millis() >= shutdownDeadline) {
         turnPiOff();                 // cut power after 30s
+    }
+
+    // --- Failsafe: force power off if the I2C shutdown handshake never arrives (e.g. bus lockup) ---
+    if (piState == PI_ON && millis() >= piOnDeadline) {
+        turnPiOff();
     }
 
     // --- Handle waking Pi ---
