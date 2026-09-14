@@ -7,6 +7,7 @@ import os
 import adafruit_ds3231
 import time
 import board
+import logging
 
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -17,6 +18,19 @@ from enum import IntEnum
 
 # Get the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(SCRIPT_DIR, "piframe.log")
+
+
+def setup_logging():
+    """Log to a file (emailed off-device before shutdown) and to stdout for cron capture"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[
+            logging.FileHandler(LOG_PATH),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
 
 class Config:
     """Configuration for PiFrame"""
@@ -64,7 +78,7 @@ class I2CController:
             time.sleep(0.00001)
             subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "dh"], check=True)
         except Exception as e:
-            print(f"I2C bus recovery failed: {e}")
+            logging.error(f"I2C bus recovery failed: {e}")
         finally:
             # Hand the pins back to the I2C peripheral (ALT0 function)
             subprocess.run(["raspi-gpio", "set", str(self.SDA_GPIO), "a0"], check=True)
@@ -81,7 +95,7 @@ class I2CController:
                     data = list(msg)
                     return data[0]
             except Exception as e:
-                print(f"I2C communication error (attempt {attempt}/{self.MAX_RETRIES}): {e}")
+                logging.error(f"I2C communication error (attempt {attempt}/{self.MAX_RETRIES}): {e}")
                 self._recover_bus()
                 time.sleep(0.05)
         return -1
@@ -143,7 +157,7 @@ class RTCController:
         
         # Enable alarm interrupt mode (after alarm is configured)
         self.rtc.alarm1_interrupt = True
-        print(f"RTC alarm set for {minutes} minute(s) from now")
+        logging.info(f"RTC alarm set for {minutes} minute(s) from now")
 
 class ImageHandler:
     """Handles image fetching, processing, and display"""
@@ -227,11 +241,37 @@ Please charge or replace the battery soon.
                 check=True
             )
             
-            print(f"Low voltage email sent to local user mailbox")
+            logging.info("Low voltage email sent to local user mailbox")
         except subprocess.CalledProcessError as e:
-            print(f"Failed to send email: {e}")
+            logging.error(f"Failed to send email: {e}")
         except FileNotFoundError:
-            print(f"{MAIL_CMD} command not found.")
+            logging.error(f"{MAIL_CMD} command not found.")
+
+    @staticmethod
+    def send_log_email(log_path: str):
+        """Email the run log off-device before shutdown, then truncate it for the next run"""
+        if not os.path.exists(log_path) or os.path.getsize(log_path) == 0:
+            return
+        try:
+            # Flush/close file handlers so all buffered log lines are on disk before we read it
+            for handler in logging.root.handlers:
+                handler.flush()
+
+            subject = "PiFrame run log"
+            MAIL_CMD = "s-nail"
+            subprocess.run(
+                [MAIL_CMD, "-s", subject, "-a", log_path, os.getenv("USER", "root")],
+                input=b"See attached log.\n",
+                check=True,
+            )
+            logging.info("Run log emailed to local user mailbox")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to email log: {e}")
+        except FileNotFoundError:
+            logging.error(f"{MAIL_CMD} command not found.")
+        finally:
+            # Truncate so next run starts with a fresh log
+            open(log_path, "w").close()
 
 class PiFrameApp:
     """Main application controller"""
@@ -246,13 +286,13 @@ class PiFrameApp:
     def check_and_display_image(self):
         """Fetch and display image with voltage warning if needed"""
         voltage = self.i2c.read_voltage()
-        print(f"Battery voltage: {voltage:.2f}V")
+        logging.info(f"Battery voltage: {voltage:.2f}V")
         
         img = self.image_handler.fetch_image(voltage)
         
         # Check for low voltage
         if voltage < Config.LOW_VOLTAGE_THRESHOLD:
-            print(f"WARNING: Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
+            logging.warning(f"Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
             self.notifications.send_low_voltage_email(voltage)
             img = self.image_handler.add_voltage_warning(img, voltage)
         
@@ -260,7 +300,7 @@ class PiFrameApp:
     
     def wait_for_input(self) -> bool:
         """Wait for button input. Returns True if shutdown should proceed."""
-        print(f"Waiting {Config.WAIT_BEFORE_SHUTDOWN_SECONDS} seconds for input...")
+        logging.info(f"Waiting {Config.WAIT_BEFORE_SHUTDOWN_SECONDS} seconds for input...")
         
         # Clear any button presses that occurred during display update
         self.i2c.arduino_button_pressed()
@@ -269,12 +309,12 @@ class PiFrameApp:
         
         while time.time() - start < Config.WAIT_BEFORE_SHUTDOWN_SECONDS:
             if self.pi_button.is_pressed:
-                print("Shutdown cancelled")
+                logging.info("Shutdown cancelled")
                 return False
             
             if self.i2c.arduino_button_pressed():
                 time.sleep(0.5)  # Allow I2C to fully close before restart
-                print("Arduino button pressed: restarting script")
+                logging.info("Arduino button pressed: restarting script")
                 os.execv(sys.executable, [sys.executable, __file__])
                 # Execution never reaches here
             
@@ -284,21 +324,29 @@ class PiFrameApp:
     
     def shutdown(self):
         """Prepare for shutdown and power off"""
-        print("No button press, shutting down")
+        logging.info("No button press, shutting down")
         self.rtc.set_alarm(Config.PI_POWER_SLEEP_MINUTES)
         pi_state = self.i2c.shutdown()
-        print(f"I2C Shutdown command response: {pi_state}")
+        logging.info(f"I2C Shutdown command response: {pi_state}")
+        # Get the log off-device before the Pi loses power
+        self.notifications.send_log_email(LOG_PATH)
         subprocess.run(["sudo", "shutdown", "-h", "now"])
     
     def run(self):
         """Main application entry point"""
-        self.check_and_display_image()
-        
-        if self.wait_for_input():
-            self.shutdown()
+        try:
+            self.check_and_display_image()
+            
+            if self.wait_for_input():
+                self.shutdown()
+        except Exception:
+            logging.exception("Unhandled error during run")
+            self.notifications.send_log_email(LOG_PATH)
+            raise
 
 def main():
     """Application entry point"""
+    setup_logging()
     app = PiFrameApp()
     app.run()
 
