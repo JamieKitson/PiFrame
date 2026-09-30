@@ -5,6 +5,8 @@ from io import BytesIO
 
 IMAGE_FOLDER = "/srv/http/192.168.1.4/resized/"
 LOG_FILE = "log.log"
+BLUR_RADIUS = 50        # blur strength of mirrored side fill
+FADE_FRACTION = 0.08    # width of sharp-to-blurred fade at each seam, as fraction of final width
 
 def crop(img, target_w, target_h):
 
@@ -16,6 +18,41 @@ def crop(img, target_w, target_h):
 	bottom = top + target_h
 
 	return img.crop((left, top, right, bottom))
+
+
+def mirror_fill(img, target_w, target_h):
+    # Extend image to target width by mirroring each edge outward, then blur
+    # the extension with a fade so the seam stays sharp and matches the image
+    img = img.convert("RGB")
+    w = img.width
+    pad_l = (target_w - w) // 2
+    pad_r = target_w - w - pad_l
+
+    canvas = Image.new("RGB", (target_w, target_h))
+    canvas.paste(img, (pad_l, 0))
+    if pad_l > 0:
+        canvas.paste(img.crop((0, 0, pad_l, target_h)).transpose(Image.FLIP_LEFT_RIGHT), (0, 0))
+    if pad_r > 0:
+        canvas.paste(img.crop((w - pad_r, 0, w, target_h)).transpose(Image.FLIP_LEFT_RIGHT), (pad_l + w, 0))
+
+    blurred = canvas.filter(ImageFilter.GaussianBlur(BLUR_RADIUS))
+
+    # Mask: 255 = sharp canvas, 0 = blurred. Fades from sharp at each seam to blurred
+    fade = max(1, int(target_w * FADE_FRACTION))
+    cols = []
+    for x in range(target_w):
+        if x < pad_l:
+            dist = pad_l - x
+        elif x >= pad_l + w:
+            dist = x - (pad_l + w) + 1
+        else:
+            dist = 0
+        cols.append(max(0, int(255 * (1 - dist / fade))))
+    mask = Image.new("L", (target_w, 1))
+    mask.putdata(cols)
+    mask = mask.resize((target_w, target_h), Image.NEAREST)
+
+    return Image.composite(canvas, blurred, mask)
 
 
 def get_unlogged_images(log_path, image_names):
@@ -107,16 +144,10 @@ try:
     target_h = img.height
     target_w = int(4 * target_h / 3)
 
-    # if image is < 4:3 add blurred sides
+    # if image is < 4:3 add mirrored, blurred sides
     if img.width / img.height < 4 / 3:
-   
-        # Create blurred background
-        bg = img.resize((target_w, target_h), Image.LANCZOS).filter(ImageFilter.GaussianBlur(50))
 
-        # Paste original image centered
-        bg.paste(img, ((target_w - img.width) // 2, 0))
-
-        img = bg
+        img = mirror_fill(img, target_w, target_h)
 
     # if images is > 4:3 then crop left and right
     else:
