@@ -6,7 +6,6 @@ from io import BytesIO
 IMAGE_FOLDER = "/srv/http/192.168.1.4/resized/"
 LOG_FILE = "log.log"
 BLUR_RADIUS = 50        # blur strength of mirrored side fill
-FADE_FRACTION = 0.08    # width of sharp-to-blurred fade at each seam, as fraction of final width
 
 def crop(img, target_w, target_h):
 
@@ -21,8 +20,7 @@ def crop(img, target_w, target_h):
 
 
 def mirror_fill(img, target_w, target_h):
-    # Extend image to target width by mirroring each edge outward, then blur
-    # the extension with a fade so the seam stays sharp and matches the image
+    # Extend image to target width by mirroring each edge outward and blurring the extension
     img = img.convert("RGB")
     w = img.width
     pad_l = (target_w - w) // 2
@@ -35,24 +33,11 @@ def mirror_fill(img, target_w, target_h):
     if pad_r > 0:
         canvas.paste(img.crop((w - pad_r, 0, w, target_h)).transpose(Image.FLIP_LEFT_RIGHT), (pad_l + w, 0))
 
-    blurred = canvas.filter(ImageFilter.GaussianBlur(BLUR_RADIUS))
+    # Blur everything, then paste the sharp original back over the centre
+    canvas = canvas.filter(ImageFilter.GaussianBlur(BLUR_RADIUS))
+    canvas.paste(img, (pad_l, 0))
 
-    # Mask: 255 = sharp canvas, 0 = blurred. Fades from sharp at each seam to blurred
-    fade = max(1, int(target_w * FADE_FRACTION))
-    cols = []
-    for x in range(target_w):
-        if x < pad_l:
-            dist = pad_l - x
-        elif x >= pad_l + w:
-            dist = x - (pad_l + w) + 1
-        else:
-            dist = 0
-        cols.append(max(0, int(255 * (1 - dist / fade))))
-    mask = Image.new("L", (target_w, 1))
-    mask.putdata(cols)
-    mask = mask.resize((target_w, target_h), Image.NEAREST)
-
-    return Image.composite(canvas, blurred, mask)
+    return canvas
 
 
 def get_unlogged_images(log_path, image_names):

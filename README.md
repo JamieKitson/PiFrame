@@ -191,7 +191,7 @@ The CGI script [Python/pics3.cgi](Python/pics3.cgi):
 - Optional `image=<filename>` query parameter serves that specific image, bypassing the log check and not logging (no `v` needed), e.g. `pics3.cgi?image=photo.jpg`.
 - Processing:
   - Portrait image: center-crop to square first.
-  - If narrower than 4:3: generates mirrored, blurred side fill that fades from sharp at the image edge.
+  - If narrower than 4:3: generates mirrored, blurred side fill.
   - Else: center-crops to exact 4:3.
   - Resizes output to `1600x1200` JPEG.
 
