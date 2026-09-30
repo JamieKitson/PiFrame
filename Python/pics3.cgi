@@ -117,19 +117,31 @@ try:
         print("No images found")
         sys.exit(0)
 
-    available_images = get_unlogged_images(LOG_FILE, images)
+    form = cgi.FieldStorage()
+    requested = form.getvalue('image')
 
-    if not available_images:
-        rollover_log(LOG_FILE)
-        available_images = images.copy()
+    # specific image requested: skip the log entirely
+    if requested:
+        filename = os.path.basename(requested)
+        if filename not in images:
+            print("Content-Type: text/plain\n")
+            print(f"Image not found: {filename}")
+            sys.exit(0)
 
-    filename = random.choice(available_images)
+    else:
+        available_images = get_unlogged_images(LOG_FILE, images)
 
-    v = cgi.FieldStorage().getvalue('v')
-    
-    with open(LOG_FILE, 'a') as file:
-        dt = datetime.datetime.now().replace(microsecond=0).isoformat().replace('T', ' ')
-        file.write(f"{dt} {filename} {v} \n")
+        if not available_images:
+            rollover_log(LOG_FILE)
+            available_images = images.copy()
+
+        filename = random.choice(available_images)
+
+        v = form.getvalue('v')
+
+        with open(LOG_FILE, 'a') as file:
+            dt = datetime.datetime.now().replace(microsecond=0).isoformat().replace('T', ' ')
+            file.write(f"{dt} {filename} {v} \n")
 
     filepath = os.path.join(IMAGE_FOLDER, filename)
 
