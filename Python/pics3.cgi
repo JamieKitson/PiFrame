@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 import os, random, cgi, sys, datetime
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageDraw, ImageChops
 from io import BytesIO
 
 IMAGE_FOLDER = "/srv/http/192.168.1.4/resized/"
 LOG_FILE = "log.log"
 BLUR_RADIUS = 50        # blur strength of mirrored side fill
+DATE_STAMP = True       # stamp EXIF date taken, bottom right, in old film camera style
+STAMP_CORE = (255, 150, 40)     # glowing orange LED digits
+STAMP_GLOW = (255, 60, 0)       # red-orange halo around the digits
 
 def crop(img, target_w, target_h):
 
@@ -38,6 +41,93 @@ def mirror_fill(img, target_w, target_h):
     canvas.paste(img, (pad_l, 0))
 
     return canvas
+
+# Seven segment layout: a=top b=top right c=bottom right d=bottom e=bottom left f=top left g=middle
+SEGMENTS = {
+    "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc",
+    "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg",
+}
+
+
+def exif_date(img):
+    # Date taken from EXIF as (year, month, day), or None if missing/invalid
+    try:
+        exif = img.getexif()
+        sub = exif.get_ifd(0x8769)
+        raw = sub.get(0x9003) or sub.get(0x9004) or exif.get(0x0132)
+        d = datetime.datetime.strptime(str(raw).strip()[:10], "%Y:%m:%d")
+        return d.year, d.month, d.day
+    except Exception:
+        return None
+
+
+def draw_stamp_text(draw, text, x, y, h, colour):
+    # Draw text as slanted seven segment digits, top-left at (x, y), digit height h
+    w = h * 0.55            # digit width
+    t = h * 0.13            # segment thickness
+    gap = h * 0.30
+    slant = 0.12
+
+    def pt(px, py):
+        return (px + (y + h - py) * slant, py)
+
+    def seg(x0, y0, x1, y1):
+        # hexagonal segment between two end points along an axis
+        if y0 == y1:
+            pts = [(x0, y0), (x0 + t / 2, y0 - t / 2), (x1 - t / 2, y0 - t / 2),
+                   (x1, y0), (x1 - t / 2, y0 + t / 2), (x0 + t / 2, y0 + t / 2)]
+        else:
+            pts = [(x0, y0), (x0 + t / 2, y0 + t / 2), (x0 + t / 2, y1 - t / 2),
+                   (x0, y1), (x0 - t / 2, y1 - t / 2), (x0 - t / 2, y0 + t / 2)]
+        draw.polygon([pt(*p) for p in pts], fill=colour)
+
+    for ch in text:
+        if ch == " ":
+            x += w
+        elif ch == "'":
+            # film cameras show the year as '98
+            draw.polygon([pt(x + t * 0.2, y), pt(x + t * 1.4, y), pt(x + t * 0.6, y + h * 0.3),
+                          pt(x - t * 0.4, y + h * 0.3)], fill=colour)
+            x += t * 1.4 + gap
+        else:
+            xl, xr, ym = x + t / 2, x + w - t / 2, y + h / 2
+            yt, yb = y + t / 2, y + h - t / 2
+            i = t * 0.15    # small gap so segments don't touch
+            lines = {"a": (xl + i, yt, xr - i, yt), "g": (xl + i, ym, xr - i, ym),
+                     "d": (xl + i, yb, xr - i, yb), "f": (xl, yt + i, xl, ym - i),
+                     "e": (xl, ym + i, xl, yb - i), "b": (xr, yt + i, xr, ym - i),
+                     "c": (xr, ym + i, xr, yb - i)}
+            for s in SEGMENTS[ch]:
+                seg(*lines[s])
+            x += w + gap
+
+
+def add_date_stamp(img, date):
+    # Orange film camera style date, bottom right: '98 10 28
+    img = img.convert("RGB")
+    text = "'%02d %02d %02d" % (date[0] % 100, date[1], date[2])
+    h = img.height * 0.045
+    margin = img.height * 0.05
+    # measure with a dummy draw, then right-align
+    class Meter:
+        right = 0
+        def polygon(self, pts, fill=None):
+            self.right = max(self.right, max(p[0] for p in pts))
+    m = Meter()
+    draw_stamp_text(m, text, 0, 0, h, None)
+    x = img.width - margin - m.right
+    y = img.height - margin - h
+
+    glow = Image.new("RGB", img.size, (0, 0, 0))
+    draw_stamp_text(ImageDraw.Draw(glow), text, x, y, h, STAMP_GLOW)
+    glow = glow.filter(ImageFilter.GaussianBlur(h * 0.12))
+    core = Image.new("RGB", img.size, (0, 0, 0))
+    draw_stamp_text(ImageDraw.Draw(core), text, x, y, h, STAMP_CORE)
+
+    # screen blend: light only, like exposed film
+    img = ImageChops.screen(img, glow)
+    img = ImageChops.screen(img, core)
+    return img
 
 
 def get_unlogged_images(log_path, image_names):
@@ -132,6 +222,7 @@ try:
 
     # Load image
     img = Image.open(filepath)
+    stamp_date = exif_date(img) if DATE_STAMP else None
     
     # for portraight pictures crop to a square using width as height
     if img.height > img.width:
@@ -153,6 +244,9 @@ try:
 
     # scale to desired size
     img = img.resize((1600, 1200), Image.LANCZOS)
+
+    if stamp_date:
+        img = add_date_stamp(img, stamp_date)
 
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=95)
