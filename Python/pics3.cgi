@@ -106,7 +106,7 @@ def add_date_stamp(img, date):
     # Orange film camera style date, bottom right: '98 10 28
     img = img.convert("RGB")
     text = "'%02d %02d %02d" % (date[0] % 100, date[1], date[2])
-    h = img.height * 0.045
+    h = img.height * 0.034
     margin = img.height * 0.05
     # measure with a dummy draw, then right-align
     class Meter:
