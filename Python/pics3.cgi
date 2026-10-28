@@ -212,11 +212,13 @@ try:
 
         filename = random.choice(available_images)
 
-        v = form.getvalue('v')
+        voltage = form.getvalue('v')
 
-        with open(LOG_FILE, 'a') as file:
-            dt = datetime.datetime.now().replace(microsecond=0).isoformat().replace('T', ' ')
-            file.write(f"{dt} {filename} {v} \n")
+        # only log when a voltage is supplied (e.g. skip manual/test requests)
+        if voltage:
+            with open(LOG_FILE, 'a') as file:
+                dt = datetime.datetime.now().replace(microsecond=0).isoformat().replace('T', ' ')
+                file.write(f"{dt} {filename} {voltage} \n")
 
     filepath = os.path.join(IMAGE_FOLDER, filename)
 
