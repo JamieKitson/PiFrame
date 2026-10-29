@@ -49,6 +49,7 @@ void rtcISR() {
 void turnPiOn() {
     digitalWrite(PIN_PI_POWER, HIGH);
     piState = PI_ON;
+    lastI2CActivity = millis();
     piOnDeadline = millis() + MAX_PI_ON_MINUTES * 60UL * 1000UL;
 }
 
@@ -60,9 +61,18 @@ void turnPiOff() {
 // ------------------------- I2C -------------------------
 #define I2C_ADDRESS 0x12
 #define SHUTDOWN_DELAY_SECS 15
+#define I2C_IDLE_REINIT_MS 20000UL // re-init Wire if the Pi is on but we've heard nothing for this long
 volatile uint8_t currentRegister = 0x00;
+volatile uint32_t lastI2CActivity = 0; // millis() of the last request/receive from the Pi
+
+void initI2C() {
+    Wire.begin(I2C_ADDRESS);
+    Wire.onReceive(onI2CReceive);
+    Wire.onRequest(onI2CRequest);
+}
 
 void onI2CReceive(int numBytes) {
+    lastI2CActivity = millis();
     while (Wire.available()) {
         currentRegister = Wire.read();
         switch (currentRegister) {
@@ -79,6 +89,7 @@ void onI2CReceive(int numBytes) {
 }
 
 void onI2CRequest() {
+    lastI2CActivity = millis();
     switch (currentRegister) {
         case 0x01:  // button
             Wire.write(buttonEventToSend ? 1 : 0);
@@ -183,9 +194,7 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), buttonISR, FALLING);
     attachInterrupt(digitalPinToInterrupt(PIN_RTC_INT), rtcISR, FALLING);
 
-    Wire.begin(I2C_ADDRESS);
-    Wire.onReceive(onI2CReceive);
-    Wire.onRequest(onI2CRequest);
+    initI2C();
 
     turnPiOn(); // power Pi on startup
 
@@ -233,6 +242,15 @@ void loop() {
     // --- Failsafe: force power off if the I2C shutdown handshake never arrives (e.g. bus lockup) ---
     if (piState == PI_ON && millis() >= piOnDeadline) {
         turnPiOff();
+    }
+
+    // --- Un-wedge the TWI peripheral ---
+    // The loop can keep running (so the watchdog stays quiet) while the TWI hardware has
+    // stopped ACKing, which the Pi sees as Errno 5. Re-initialising Wire clears that state.
+    if (piState != PI_OFF && millis() - lastI2CActivity >= I2C_IDLE_REINIT_MS) {
+        Wire.end();
+        initI2C();
+        lastI2CActivity = millis();
     }
 
     // --- Handle waking Pi ---
