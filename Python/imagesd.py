@@ -15,6 +15,7 @@ from inky.auto import auto as inky_auto
 from gpiozero import Button
 from smbus2 import SMBus, i2c_msg
 from enum import IntEnum
+from typing import Optional
 
 # Get the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +45,7 @@ class Config:
     VOLTAGE_SCALE_FACTOR: float = 25.0
     WARNING_FONT_PATH: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     WARNING_FONT_SIZE: int = 24
+    IMAGE_FETCH_TIMEOUT_SECONDS: int = 30
 
 class I2CCommand(IntEnum):
     READ_BUTTON = 0x01
@@ -165,10 +167,18 @@ class ImageHandler:
     def __init__(self, inky_display):
         self.display = inky_display
     
-    def fetch_image(self, voltage: float) -> Image.Image:
-        """Fetch image from server"""
-        response = requests.get(Config.IMAGE_URL + f"?v={voltage:.2f}")
-        return Image.open(BytesIO(response.content))
+    def fetch_image(self, voltage: float) -> Optional[Image.Image]:
+        """Fetch image from server, or None if the server can't be reached"""
+        try:
+            response = requests.get(
+                Config.IMAGE_URL + f"?v={voltage:.2f}",
+                timeout=Config.IMAGE_FETCH_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            return Image.open(BytesIO(response.content))
+        except requests.RequestException as e:
+            logging.error(f"Failed to fetch image: {e}")
+            return None
     
     def add_voltage_warning(self, img: Image.Image, voltage: float) -> Image.Image:
         """Add low voltage warning overlay to image"""
@@ -277,19 +287,29 @@ class PiFrameApp:
     """Main application controller"""
     
     def __init__(self):
+        # Hardware is initialised in setup() so a failure there can still reach shutdown()
         self.i2c = I2CController()
+        self.notifications = NotificationService()
+        self.rtc = None
+        self.image_handler = None
+        self.pi_button = None
+
+    def setup(self):
+        """Initialise hardware"""
         self.rtc = RTCController()
         self.image_handler = ImageHandler(inky_auto())
         self.pi_button = Button(Config.PI_BUTTON_PIN)
-        self.notifications = NotificationService()
-    
+
     def check_and_display_image(self):
         """Fetch and display image with voltage warning if needed"""
         voltage = self.i2c.read_voltage()
         logging.info(f"Battery voltage: {voltage:.2f}V")
-        
+
         img = self.image_handler.fetch_image(voltage)
-        
+        if img is None:
+            logging.warning("No image available, leaving current display unchanged")
+            return
+
         # Check for low voltage
         if voltage < Config.LOW_VOLTAGE_THRESHOLD:
             logging.warning(f"Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
@@ -323,32 +343,45 @@ class PiFrameApp:
         return True
     
     def shutdown(self):
-        """Prepare for shutdown and power off"""
-        logging.info("No button press, shutting down")
-        self.rtc.set_alarm(Config.PI_POWER_SLEEP_MINUTES)
-        pi_state = self.i2c.shutdown()
-        logging.info(f"I2C Shutdown command response: {pi_state}")
-        # Get the log off-device before the Pi loses power
-        self.notifications.send_log_email(LOG_PATH)
+        """Prepare for shutdown and power off.
+
+        Every step is best-effort: the Arduino cuts power after its fail-safe
+        timeout whether or not the Pi has halted, so the Pi must always reach
+        the final shutdown call, whatever goes wrong before it.
+        """
+        logging.info("Shutting down")
+        try:
+            self.rtc.set_alarm(Config.PI_POWER_SLEEP_MINUTES)
+        except Exception:
+            logging.exception("Failed to set RTC alarm")
+        try:
+            pi_state = self.i2c.shutdown()
+            logging.info(f"I2C Shutdown command response: {pi_state}")
+        except Exception:
+            logging.exception("Failed to send shutdown command to Arduino")
+        try:
+            # Get the log off-device before the Pi loses power
+            self.notifications.send_log_email(LOG_PATH)
+        except Exception:
+            logging.exception("Failed to email log")
         subprocess.run(["sudo", "shutdown", "-h", "now"])
-    
+
     def run(self):
         """Main application entry point"""
         try:
+            self.setup()
             self.check_and_display_image()
-            
-            if self.wait_for_input():
-                self.shutdown()
+
+            if not self.wait_for_input():
+                return
         except Exception:
             logging.exception("Unhandled error during run")
-            self.notifications.send_log_email(LOG_PATH)
-            raise
+        self.shutdown()
 
 def main():
     """Application entry point"""
     setup_logging()
-    app = PiFrameApp()
-    app.run()
+    PiFrameApp().run()
 
 if __name__ == "__main__":
     main()
