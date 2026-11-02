@@ -15,6 +15,7 @@ volatile bool rtcWake = false;
 uint32_t shutdownDeadline = 0; // millis() timestamp
 uint32_t piOnDeadline = 0; // millis() timestamp; failsafe if I2C shutdown handshake never arrives
 volatile bool buttonEventToSend = false;
+volatile uint32_t lastI2CActivity = 0; // millis() of the last request/receive from the Pi
 
 enum PiPowerState {
     PI_OFF,
@@ -63,7 +64,6 @@ void turnPiOff() {
 #define SHUTDOWN_DELAY_SECS 15
 #define I2C_IDLE_REINIT_MS 20000UL // re-init Wire if the Pi is on but we've heard nothing for this long
 volatile uint8_t currentRegister = 0x00;
-volatile uint32_t lastI2CActivity = 0; // millis() of the last request/receive from the Pi
 
 void initI2C() {
     Wire.begin(I2C_ADDRESS);
