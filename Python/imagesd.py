@@ -129,7 +129,10 @@ class RTCController:
     def __init__(self):
         self.i2c_bus = board.I2C()
         self.rtc = adafruit_ds3231.DS3231(self.i2c_bus)
-    
+        # The DS3231 holds INT low until the flag is cleared, and the Arduino only wakes on a
+        # falling edge, so clear it straight away in case a previous run never got that far
+        self.rtc.alarm1_status = False
+
     def _disable_32khz_output(self):
         """Disable the 32kHz output pin on DS3231 to save power"""
         # Read current status register
@@ -155,7 +158,8 @@ class RTCController:
         # Set alarm for 'minutes' minutes from now
         now = time.mktime(self.rtc.datetime)
         alarm_time = time.localtime(now + minutes * 60)
-        self.rtc.alarm1 = (alarm_time, "monthly")
+        # "daily" matches on time of day only, so it keeps firing every day even if a later run fails
+        self.rtc.alarm1 = (alarm_time, "daily")
         
         # Enable alarm interrupt mode (after alarm is configured)
         self.rtc.alarm1_interrupt = True
