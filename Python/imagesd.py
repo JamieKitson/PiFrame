@@ -102,9 +102,11 @@ class I2CController:
                 time.sleep(0.05)
         return -1
     
-    def read_voltage(self) -> float:
-        """Read battery voltage from Arduino"""
+    def read_voltage(self) -> Optional[float]:
+        """Read battery voltage from Arduino, or None if the I2C read failed"""
         raw_voltage = self._send_command(I2CCommand.READ_VOLTAGE)
+        if raw_voltage < 0:
+            return None
         return raw_voltage / Config.VOLTAGE_SCALE_FACTOR
     
     def arduino_button_pressed(self) -> bool:
@@ -171,11 +173,13 @@ class ImageHandler:
     def __init__(self, inky_display):
         self.display = inky_display
     
-    def fetch_image(self, voltage: float) -> Optional[Image.Image]:
-        """Fetch image from server, or None if the server can't be reached"""
+    def fetch_image(self, voltage: Optional[float]) -> Optional[Image.Image]:
+        """Fetch image from server, or None if the server can't be reached.
+        A failed voltage read is sent as "None": the server still logs it (so the image
+        counts as shown) and plotVoltage.py skips it."""
         try:
             response = requests.get(
-                Config.IMAGE_URL + f"?v={voltage:.2f}",
+                Config.IMAGE_URL + f"?v={'None' if voltage is None else f'{voltage:.2f}'}",
                 timeout=Config.IMAGE_FETCH_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
@@ -184,8 +188,8 @@ class ImageHandler:
             logging.error(f"Failed to fetch image: {e}")
             return None
     
-    def add_voltage_warning(self, img: Image.Image, voltage: float) -> Image.Image:
-        """Add low voltage warning overlay to image"""
+    def add_warning(self, img: Image.Image, warning_text: str) -> Image.Image:
+        """Add warning banner overlay to image"""
         draw = ImageDraw.Draw(img)
         
         # Try to use a larger font, fall back to default if not available
@@ -193,8 +197,6 @@ class ImageHandler:
             font = ImageFont.truetype(Config.WARNING_FONT_PATH, Config.WARNING_FONT_SIZE)
         except:
             font = ImageFont.load_default()
-        
-        warning_text = f"LOW BATTERY: {voltage:.2f}V"
         
         # Get text size for background rectangle
         bbox = draw.textbbox((0, 0), warning_text, font=font)
@@ -236,17 +238,9 @@ class NotificationService:
     """Handles system notifications"""
     
     @staticmethod
-    def send_low_voltage_email(voltage: float):
-        """Send email notification for low voltage using local mail"""
+    def send_email(subject: str, body: str):
+        """Send email notification using local mail"""
         try:
-            subject = f"PiFrame Low Voltage Alert: {voltage:.2f}V"
-            body = f"""Warning: PiFrame battery voltage is low!
-
-Current Voltage: {voltage:.2f}V
-Threshold: {Config.LOW_VOLTAGE_THRESHOLD}V
-
-Please charge or replace the battery soon.
-"""
             MAIL_CMD = "s-nail"
             # Send to current user - mail will deliver to local mailbox
             subprocess.run(
@@ -254,12 +248,36 @@ Please charge or replace the battery soon.
                 input=body.encode(),
                 check=True
             )
-            
-            logging.info("Low voltage email sent to local user mailbox")
+
+            logging.info(f"Email '{subject}' sent to local user mailbox")
         except subprocess.CalledProcessError as e:
             logging.error(f"Failed to send email: {e}")
         except FileNotFoundError:
             logging.error(f"{MAIL_CMD} command not found.")
+
+    @staticmethod
+    def send_low_voltage_email(voltage: float):
+        """Send email notification for low voltage"""
+        NotificationService.send_email(
+            f"PiFrame Low Voltage Alert: {voltage:.2f}V",
+            f"""Warning: PiFrame battery voltage is low!
+
+Current Voltage: {voltage:.2f}V
+Threshold: {Config.LOW_VOLTAGE_THRESHOLD}V
+
+Please charge or replace the battery soon.
+""")
+
+    @staticmethod
+    def send_i2c_error_email():
+        """Send email notification that the battery voltage could not be read"""
+        NotificationService.send_email(
+            "PiFrame I2C Error: could not read battery voltage",
+            """Warning: PiFrame could not read the battery voltage from the Arduino over I2C.
+
+The I2C bus may be locked up, so the battery level is unknown for this refresh.
+See the run log email for details.
+""")
 
     @staticmethod
     def send_log_email(log_path: str):
@@ -307,18 +325,22 @@ class PiFrameApp:
     def check_and_display_image(self):
         """Fetch and display image with voltage warning if needed"""
         voltage = self.i2c.read_voltage()
-        logging.info(f"Battery voltage: {voltage:.2f}V")
+        logging.info(f"Battery voltage: {voltage}")
 
         img = self.image_handler.fetch_image(voltage)
         if img is None:
             logging.warning("No image available, leaving current display unchanged")
             return
 
+        if voltage is None:
+            logging.error("Could not read battery voltage over I2C")
+            self.notifications.send_i2c_error_email()
+            img = self.image_handler.add_warning(img, "I2C ERROR: BATTERY UNKNOWN")
         # Check for low voltage
-        if voltage < Config.LOW_VOLTAGE_THRESHOLD:
+        elif voltage < Config.LOW_VOLTAGE_THRESHOLD:
             logging.warning(f"Low voltage detected ({voltage:.2f}V < {Config.LOW_VOLTAGE_THRESHOLD}V)")
             self.notifications.send_low_voltage_email(voltage)
-            img = self.image_handler.add_voltage_warning(img, voltage)
+            img = self.image_handler.add_warning(img, f"LOW BATTERY: {voltage:.2f}V")
         
         self.image_handler.display_image(img, os.path.join(SCRIPT_DIR, "image.jpg"))
     
